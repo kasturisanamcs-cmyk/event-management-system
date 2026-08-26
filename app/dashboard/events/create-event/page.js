@@ -190,10 +190,7 @@ const userRole = profile.role?.trim().toUpperCase();
 
 console.log("User role:", userRole);
 
-if (userRole !== "ADMIN") {
-  setError(`Only an ADMIN can create an event. Current role: ${userRole || "UNKNOWN"}`);
-  return;
-}
+
 // BASIC VALIDATION
 if (
   !form.name.trim() ||

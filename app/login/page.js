@@ -36,7 +36,6 @@ export default function LoginPage() {
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
     if (!emailRegex.test(cleanEmail)) {
       setErrorMessage("Please enter a valid email address.");
       return;
@@ -66,12 +65,11 @@ export default function LoginPage() {
           password,
         });
 
-      if (loginError) {
-        console.error("Login error:", loginError);
-
-        setErrorMessage("Invalid email or password.");
-        return;
-      }
+if (loginError) {
+  console.error("LOGIN ERROR:", loginError);
+  setErrorMessage(loginError.message);
+  return;
+}
 
       const user = authData?.user;
 
@@ -117,45 +115,37 @@ export default function LoginPage() {
       }
 
       // --------------------------------
-      // ROLE-BASED ROUTING
-      // --------------------------------
+// ROLE-BASED ROUTING
+// --------------------------------
 
-      const role = profile.role.toUpperCase();
+const role = profile.role?.trim().toUpperCase();
 
-      switch (role) {
-        case "ADMIN":
-          router.push("/dashboard/admin");
-          break;
+const allowedRoles = [
+  "ADMIN",
+  "ORGANIZER",
+  "COMPETITION_MEMBER",
+  "VOLUNTEER",
+  "PARTICIPANT",
+];
 
-        case "ORGANIZER":
-          router.push("/dashboard/organizer");
-          break;
+if (!allowedRoles.includes(role)) {
+  console.error("Unknown role:", profile.role);
 
-        case "COMPETITION_MEMBER":
-          router.push("/dashboard/competition-member");
-          break;
+  await supabase.auth.signOut();
 
-        case "VOLUNTEER":
-          router.push("/dashboard/volunteer");
-          break;
+  setErrorMessage(
+    "Your account has an invalid role. Please contact the administrator."
+  );
 
-        case "PARTICIPANT":
-          router.push("/events");
-          break;
+  return;
+}
 
-        default:
-          console.error("Unknown role:", profile.role);
+// All authenticated users enter through the same dashboard.
+// The dashboard will display controls according to the user's role.
+router.push("/dashboard");
+router.refresh();
 
-          await supabase.auth.signOut();
 
-          setErrorMessage(
-            "Your account has an invalid role. Please contact the administrator."
-          );
-
-          return;
-      }
-
-      router.refresh();
     } catch (error) {
       console.error("Unexpected login error:", error);
 
