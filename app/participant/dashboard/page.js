@@ -1,5 +1,5 @@
 "use client";
-
+import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import { useState } from "react";
 
 export default function ParticipantDashboard() {
@@ -15,8 +15,7 @@ export default function ParticipantDashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#071225] text-white">
-
+  <DashboardLayout title="Admin Dashboard">
       {/* Sidebar */}
       <aside className="fixed left-0 top-0 h-screen w-64 border-r border-white/10 bg-[#08152b] p-5">
 
@@ -251,8 +250,9 @@ export default function ParticipantDashboard() {
         </section>
 
       </main>
-    </div>
-  );
+      </DashboardLayout>
+);
+
 }
 
 
