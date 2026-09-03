@@ -1,149 +1,162 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
+import DashboardLayout from "@/components/dashboard/DashboardLayout";
 
-export default function DashboardPage() {
-  const [stats, setStats] = useState({
-    events: 0,
-    competitions: 0,
-    participants: 0,
-    volunteers: 0,
-  });
+const events = [
+  {
+    id: "tech-hackathon-2026",
+    title: "Tech Hackathon 2026",
+    date: "20 August 2026",
+    time: "10:00 AM",
+    venue: "Main Auditorium",
+    status: "ACTIVE",
+    competitions: 5,
+  },
+  {
+    id: "ai-innovation-challenge",
+    title: "AI Innovation Challenge",
+    date: "25 August 2026",
+    time: "11:30 AM",
+    venue: "Computer Lab",
+    status: "UPCOMING",
+    competitions: 8,
+  },
+  {
+    id: "web-development-contest",
+    title: "Web Development Contest",
+    date: "30 August 2026",
+    time: "09:30 AM",
+    venue: "Seminar Hall",
+    status: "UPCOMING",
+    competitions: 6,
+  },
+];
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    loadDashboardStats();
-  }, []);
-
-  async function loadDashboardStats() {
-    const supabase = createClient();
-
-    setLoading(true);
-    setError("");
-
-    const [
-      eventsResult,
-      competitionsResult,
-      participantsResult,
-      volunteersResult,
-    ] = await Promise.all([
-      supabase
-        .from("events")
-        .select("id", { count: "exact", head: true }),
-
-      supabase
-        .from("competitions")
-        .select("id", { count: "exact", head: true }),
-
-      supabase
-        .from("registrations")
-        .select("id", { count: "exact", head: true }),
-
-      supabase
-        .from("volunteer_assignments")
-        .select("id", { count: "exact", head: true }),
-    ]);
-
-    const firstError =
-      eventsResult.error ||
-      competitionsResult.error ||
-      participantsResult.error ||
-      volunteersResult.error;
-
-    if (firstError) {
-      console.error("Dashboard statistics error:", firstError);
-      setError("Could not load dashboard statistics.");
-      setLoading(false);
-      return;
-    }
-
-    setStats({
-      events: eventsResult.count ?? 0,
-      competitions: competitionsResult.count ?? 0,
-      participants: participantsResult.count ?? 0,
-      volunteers: volunteersResult.count ?? 0,
-    });
-
-    setLoading(false);
-  }
-
+export default function EventsPage() {
   return (
-    <div>
-      <div className="mb-8">
-        <p className="text-sm font-semibold uppercase tracking-widest text-blue-400">
-          EventNest
-        </p>
+    <DashboardLayout title="Events">
+      <div className="space-y-8">
 
-        <h2 className="mt-2 text-3xl font-bold text-white">
-          Admin Dashboard
-        </h2>
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-widest text-blue-400">
+              EventNest
+            </p>
 
-        <p className="mt-3 text-slate-400">
-          Manage events, competitions, participants and volunteers.
-        </p>
-      </div>
+            <h1 className="mt-2 text-3xl font-bold text-white">
+              Events
+            </h1>
 
-      {error && (
-        <div className="mb-6 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-          {error}
+            <p className="mt-2 text-slate-400">
+              View and manage events created by the system.
+            </p>
+          </div>
+
+          <Link
+            href="/dashboard/events/create-event"
+            className="w-fit rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-500"
+          >
+            + Create Event
+          </Link>
         </div>
-      )}
 
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <DashboardCard
-          title="Events"
-          value={loading ? "..." : stats.events}
-          description="Total events"
-        />
+        {/* Event List */}
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
 
-        <DashboardCard
-          title="Competitions"
-          value={loading ? "..." : stats.competitions}
-          description="Total competitions"
-        />
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-white">
+                All Events
+              </h2>
 
-        <DashboardCard
-          title="Participants"
-          value={loading ? "..." : stats.participants}
-          description="Total registrations"
-        />
+              <p className="mt-1 text-sm text-slate-500">
+                Events currently available in EventNest
+              </p>
+            </div>
 
-        <DashboardCard
-          title="Volunteers"
-          value={loading ? "..." : stats.volunteers}
-          description="Volunteer assignments"
-        />
+            <span className="text-sm text-slate-500">
+              {events.length} events
+            </span>
+          </div>
+
+          <div className="mt-6 space-y-4">
+            {events.map((event) => (
+              <EventCard
+                key={event.id}
+                event={event}
+              />
+            ))}
+          </div>
+
+        </div>
+
       </div>
-
-      <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-        <h3 className="text-lg font-semibold text-white">
-          EventNest Administration
-        </h3>
-
-        <p className="mt-2 text-sm leading-6 text-slate-400">
-          Use the dashboard to manage your events, competitions,
-          participants and volunteer operations.
-        </p>
-      </div>
-    </div>
+    </DashboardLayout>
   );
 }
 
-function DashboardCard({ title, value, description }) {
+
+/* =========================
+   EVENT CARD
+========================= */
+
+function EventCard({ event }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-      <p className="text-sm text-slate-500">{title}</p>
+    <div className="flex flex-col gap-5 rounded-xl border border-white/10 bg-[#08152b] p-5 transition hover:border-blue-500/30 sm:flex-row sm:items-center sm:justify-between">
 
-      <p className="mt-3 text-3xl font-bold text-white">
-        {value}
-      </p>
+      {/* Event Information */}
+      <div className="min-w-0">
 
-      <p className="mt-1 text-xs text-slate-600">
-        {description}
-      </p>
+        <div className="flex flex-wrap items-center gap-3">
+
+          <h3 className="text-lg font-semibold text-white">
+            {event.title}
+          </h3>
+
+          <span
+            className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+              event.status === "ACTIVE"
+                ? "bg-green-500/10 text-green-400"
+                : "bg-blue-500/10 text-blue-400"
+            }`}
+          >
+            {event.status}
+          </span>
+
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-500">
+
+          <span>
+            📅 {event.date}
+          </span>
+
+          <span>
+            ◷ {event.time}
+          </span>
+
+          <span>
+            📍 {event.venue}
+          </span>
+
+          <span>
+            🏆 {event.competitions} competitions
+          </span>
+
+        </div>
+
+      </div>
+
+      {/* View Button */}
+      <Link
+        href={`/dashboard/events/${event.id}`}
+        className="w-fit shrink-0 rounded-lg border border-white/10 px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:border-blue-500/40 hover:bg-blue-500/10 hover:text-white"
+      >
+        View
+      </Link>
+
     </div>
   );
 }

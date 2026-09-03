@@ -9,8 +9,10 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="flex min-h-screen bg-[#020617] text-white">
+      {/* Sidebar */}
       <DashboardSidebar />
 
+      {/* Main Area */}
       <div className="flex min-w-0 flex-1 flex-col">
         <DashboardHeader title={title} />
 
