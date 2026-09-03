@@ -1,61 +1,133 @@
+
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { createClient } from "@/lib/supabase/server";
+
+export const runtime = "nodejs";
+
+/* =========================================================
+   GMAIL SMTP CONFIGURATION
+========================================================= */
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
   secure: false,
-  requireTLS: true,
+
   auth: {
     user: process.env.GMAIL_USER,
     pass: process.env.GMAIL_APP_PASSWORD,
   },
-tls: {
-  minVersion: "TLSv1.2",
-  rejectUnauthorized: false,
-},
+
+  tls: {
+    minVersion: "TLSv1.2",
+    servername: "smtp.gmail.com",
+  },
+
+  connectionTimeout: 15000,
+  greetingTimeout: 15000,
+  socketTimeout: 30000,
 });
-try {
-  await transporter.verify();
-  console.log("GMAIL SMTP CONNECTION WORKS");
-} catch (error) {
-  console.error("GMAIL SMTP VERIFY ERROR:", error);
+
+/* =========================================================
+   HTML ESCAPE
+   Prevents event name from breaking the email HTML.
+========================================================= */
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
+/* =========================================================
+   POST
+========================================================= */
+
 export async function POST(request) {
+  let invitationId = null;
+
   try {
+    /* =====================================================
+       SUPABASE
+    ===================================================== */
+
     const supabase = await createClient();
 
-    // Check logged-in user
+    /* =====================================================
+       CHECK LOGIN
+    ===================================================== */
+
     const {
       data: { user },
       error: userError,
     } = await supabase.auth.getUser();
 
-    if (userError || !user) {
+    if (userError) {
+      console.error("Supabase auth error:", userError);
+
       return NextResponse.json(
-        { error: "You must be logged in." },
+        {
+          error: "Unable to verify your login session.",
+        },
         { status: 401 }
       );
     }
 
-    // Get request data
+    if (!user) {
+      return NextResponse.json(
+        {
+          error: "You must be logged in.",
+        },
+        { status: 401 }
+      );
+    }
+
+    /* =====================================================
+       GET REQUEST DATA
+    ===================================================== */
+
     const body = await request.json();
 
-    const eventId = body.eventId;
-    const email = body.email?.trim().toLowerCase();
-        
+    const eventId = body?.eventId;
+    const email = body?.email?.trim().toLowerCase();
 
     if (!eventId || !email) {
       return NextResponse.json(
-        { error: "Event ID and email are required." },
+        {
+          error: "Event ID and email are required.",
+        },
         { status: 400 }
       );
     }
 
-    // Check that current user is ADMIN
-    const { data: profile, error: profileError } = await supabase
+    /* =====================================================
+       BASIC EMAIL VALIDATION
+    ===================================================== */
+
+    const emailRegex =
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(email)) {
+      return NextResponse.json(
+        {
+          error: "Please enter a valid email address.",
+        },
+        { status: 400 }
+      );
+    }
+
+    /* =====================================================
+       CHECK ADMIN ROLE
+    ===================================================== */
+
+    const {
+      data: profile,
+      error: profileError,
+    } = await supabase
       .from("profiles")
       .select("role, full_name")
       .eq("id", user.id)
@@ -65,15 +137,35 @@ export async function POST(request) {
       throw profileError;
     }
 
-    if (profile?.role !== "ADMIN") {
+    if (!profile) {
       return NextResponse.json(
-        { error: "Only an ADMIN can invite organizers." },
+        {
+          error: "Your profile could not be found.",
+        },
+        { status: 404 }
+      );
+    }
+
+    const userRole = profile.role?.trim().toUpperCase();
+
+    if (userRole !== "ADMIN") {
+      return NextResponse.json(
+        {
+          error: "Only an ADMIN can invite organizers.",
+        },
         { status: 403 }
       );
     }
 
-    // Check event belongs to this admin
-    const { data: event, error: eventError } = await supabase
+    /* =====================================================
+       CHECK EVENT
+       Event must belong to logged-in admin.
+    ===================================================== */
+
+    const {
+      data: event,
+      error: eventError,
+    } = await supabase
       .from("events")
       .select("id, name")
       .eq("id", eventId)
@@ -86,168 +178,401 @@ export async function POST(request) {
 
     if (!event) {
       return NextResponse.json(
-        { error: "Event not found or you do not have permission." },
+        {
+          error:
+            "Event not found or you do not have permission.",
+        },
         { status: 404 }
       );
     }
-        // --------------------------------
-// CHECK EXISTING PENDING INVITATION
-// --------------------------------
 
-const {
-  data: existingInvitation,
-  error: existingError,
-} = await supabase
-  .from("organizer_invitations")
-  .select("id, status")
-  .eq("event_id", eventId)
-  .eq("email", email)
-  .eq("status", "PENDING")
-  .maybeSingle();
+    /* =====================================================
+       CHECK EXISTING PENDING INVITATION
+    ===================================================== */
 
-if (existingError) {
-  throw existingError;
-}
-
-// --------------------------------
-// CREATE NEW TOKEN + EXPIRY
-// --------------------------------
-
-const token = crypto.randomUUID();
-
-const expiresAt = new Date(
-  Date.now() + 48 * 60 * 60 * 1000
-).toISOString();
-
-let invitation;
-
-// --------------------------------
-// IF PENDING EXISTS → UPDATE IT
-// OTHERWISE → CREATE NEW ONE
-// --------------------------------
-
-if (existingInvitation) {
-  const { data: updatedInvitation, error: updateError } =
-    await supabase
+    const {
+      data: existingInvitation,
+      error: existingError,
+    } = await supabase
       .from("organizer_invitations")
-      .update({
-        token,
-        expires_at: expiresAt,
-        status: "PENDING",
-        created_at: new Date().toISOString(),
-      })
-      .eq("id", existingInvitation.id)
-      .select()
-      .single();
+      .select("id, status")
+      .eq("event_id", eventId)
+      .eq("email", email)
+      .eq("status", "PENDING")
+      .maybeSingle();
 
-  if (updateError) {
-    throw updateError;
-  }
+    if (existingError) {
+      throw existingError;
+    }
 
-  invitation = updatedInvitation;
-} else {
-  const { data: newInvitation, error: insertError } =
-    await supabase
-      .from("organizer_invitations")
-      .insert({
-        event_id: eventId,
-        email,
-        invited_by: user.id,
-        status: "PENDING",
-        token,
-        expires_at: expiresAt,
-      })
-      .select()
-      .single();
+    /* =====================================================
+       CREATE TOKEN
+    ===================================================== */
 
-  if (insertError) {
-    throw insertError;
-  }
+    const token = crypto.randomUUID();
 
-  invitation = newInvitation;
-}
-    
+    const expiresAt = new Date(
+      Date.now() + 48 * 60 * 60 * 1000
+    ).toISOString();
 
-    
-    // Invitation URL
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    let invitation;
+
+    /* =====================================================
+       UPDATE EXISTING INVITATION
+    ===================================================== */
+
+    if (existingInvitation) {
+      const {
+        data: updatedInvitation,
+        error: updateError,
+      } = await supabase
+        .from("organizer_invitations")
+        .update({
+          token,
+          expires_at: expiresAt,
+          status: "PENDING",
+          created_at: new Date().toISOString(),
+        })
+        .eq("id", existingInvitation.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      invitation = updatedInvitation;
+    }
+
+    /* =====================================================
+       CREATE NEW INVITATION
+    ===================================================== */
+
+    else {
+      const {
+        data: newInvitation,
+        error: insertError,
+      } = await supabase
+        .from("organizer_invitations")
+        .insert({
+          event_id: eventId,
+          email,
+          invited_by: user.id,
+          status: "PENDING",
+          token,
+          expires_at: expiresAt,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      invitation = newInvitation;
+    }
+
+    invitationId = invitation.id;
+
+    /* =====================================================
+       INVITATION URL
+    ===================================================== */
+
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
+
+    if (!baseUrl) {
+      throw new Error(
+        "NEXT_PUBLIC_SITE_URL is not configured."
+      );
+    }
+
+    const cleanBaseUrl = baseUrl.replace(/\/$/, "");
 
     const invitationUrl =
-      `${baseUrl}/organizer-invite/${token}`;
+      `${cleanBaseUrl}/organizer-invite/${token}`;
 
-    // Send email
+    /* =====================================================
+       ESCAPE EVENT NAME FOR HTML
+    ===================================================== */
+
+    const safeEventName = escapeHtml(event.name);
+
+    /* =====================================================
+       SEND EMAIL
+    ===================================================== */
+
     const emailResult = await transporter.sendMail({
-  from: `"EventNest" <${process.env.GMAIL_USER}>`,
-  to: email,
-  subject: `You're invited to organize ${event.name}`,
-  html: `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
-      <h1>EventNest Organizer Invitation</h1>
+      from: `"EventNest" <${process.env.GMAIL_USER}>`,
+      to: email,
+      replyTo: process.env.GMAIL_USER,
 
-      <p>Hello,</p>
+      subject:
+        `You're invited to organize ${event.name}`,
 
-      <p>
-        You have been invited to become an organizer for:
-      </p>
+      text: `
+EventNest Organizer Invitation
 
-      <h2>${event.name}</h2>
+Hello,
 
-      <p>
-        Click the button below to accept the invitation.
-      </p>
+You have been invited to become an organizer for:
 
-      <p>
-        <a
-          href="${invitationUrl}"
-          style="
-            display:inline-block;
-            padding:12px 20px;
-            background:#2563eb;
-            color:white;
-            text-decoration:none;
-            border-radius:8px;
-            font-weight:bold;
-          "
-        >
-          Accept Organizer Invitation
-        </a>
-      </p>
+${event.name}
 
-      <p>This invitation expires in 48 hours.</p>
+Accept the invitation using this link:
 
-      <p>
-        If you were not expecting this invitation, you can ignore this email.
-      </p>
+${invitationUrl}
 
-      <p>— EventNest</p>
-    </div>
-  `,
-});
+This invitation expires in 48 hours.
 
-    if (!emailResult?.messageId) {
-  await supabase
-    .from("organizer_invitations")
-    .delete()
-    .eq("id", invitation.id);
+If you were not expecting this email, you can ignore it.
 
-  throw new Error("Email could not be sent.");
-}
+— EventNest
+      `.trim(),
 
-    return NextResponse.json({
-      success: true,
-      message: "Organizer invitation sent successfully.",
+      html: `
+        <!DOCTYPE html>
+
+        <html>
+          <body
+            style="
+              margin:0;
+              padding:0;
+              background:#f4f7fb;
+              font-family:Arial,Helvetica,sans-serif;
+            "
+          >
+
+            <div
+              style="
+                max-width:600px;
+                margin:40px auto;
+                background:#ffffff;
+                border-radius:12px;
+                padding:32px;
+                box-sizing:border-box;
+              "
+            >
+
+              <h1
+                style="
+                  margin-top:0;
+                  color:#111827;
+                "
+              >
+                EventNest Organizer Invitation
+              </h1>
+
+              <p
+                style="
+                  color:#374151;
+                  font-size:16px;
+                  line-height:1.6;
+                "
+              >
+                Hello,
+              </p>
+
+              <p
+                style="
+                  color:#374151;
+                  font-size:16px;
+                  line-height:1.6;
+                "
+              >
+                You have been invited to become an
+                organizer for:
+              </p>
+
+              <h2
+                style="
+                  color:#111827;
+                  margin-top:24px;
+                "
+              >
+                ${safeEventName}
+              </h2>
+
+              <p
+                style="
+                  color:#374151;
+                  font-size:16px;
+                  line-height:1.6;
+                "
+              >
+                Click the button below to accept
+                the organizer invitation.
+              </p>
+
+              <div
+                style="
+                  margin:30px 0;
+                  text-align:center;
+                "
+              >
+
+                <a
+                  href="${invitationUrl}"
+                  style="
+                    display:inline-block;
+                    padding:14px 24px;
+                    background:#2563eb;
+                    color:#ffffff;
+                    text-decoration:none;
+                    border-radius:8px;
+                    font-weight:bold;
+                  "
+                >
+                  Accept Organizer Invitation
+                </a>
+
+              </div>
+
+              <p
+                style="
+                  color:#6b7280;
+                  font-size:14px;
+                  line-height:1.6;
+                "
+              >
+                This invitation expires in 48 hours.
+              </p>
+
+              <p
+                style="
+                  color:#6b7280;
+                  font-size:14px;
+                  line-height:1.6;
+                "
+              >
+                If you were not expecting this email,
+                you can safely ignore it.
+              </p>
+
+              <p
+                style="
+                  color:#6b7280;
+                  font-size:14px;
+                  margin-top:30px;
+                "
+              >
+                — EventNest
+              </p>
+
+            </div>
+
+          </body>
+        </html>
+      `,
     });
-  } catch (error) {
-    console.error("Organizer invitation error:", error);
+
+    /* =====================================================
+       IMPORTANT:
+       CHECK ACTUAL SMTP RESULT
+    ===================================================== */
+
+    console.log("EMAIL RESULT:", {
+      messageId: emailResult?.messageId,
+      accepted: emailResult?.accepted,
+      rejected: emailResult?.rejected,
+      response: emailResult?.response,
+      envelope: emailResult?.envelope,
+    });
+
+    /* =====================================================
+       VERIFY RECIPIENT WAS ACCEPTED
+    ===================================================== */
+
+    const accepted =
+      Array.isArray(emailResult?.accepted) &&
+      emailResult.accepted
+        .map((item) => String(item).toLowerCase())
+        .includes(email);
+
+    const rejected =
+      Array.isArray(emailResult?.rejected) &&
+      emailResult.rejected
+        .map((item) => String(item).toLowerCase())
+        .includes(email);
+
+    if (!emailResult?.messageId || rejected || !accepted) {
+      /* -----------------------------------------------
+         EMAIL WAS NOT ACCEPTED
+      ------------------------------------------------ */
+
+      if (invitationId) {
+        await supabase
+          .from("organizer_invitations")
+          .delete()
+          .eq("id", invitationId);
+      }
+
+      return NextResponse.json(
+        {
+          error:
+            "The email server did not accept the invitation email.",
+          emailAccepted: false,
+        },
+        { status: 502 }
+      );
+    }
+
+    /* =====================================================
+       SUCCESS
+    ===================================================== */
+
+    return NextResponse.json(
+      {
+        success: true,
+
+        message:
+          "Organizer invitation email was accepted by the email server.",
+
+        emailAccepted: true,
+
+        messageId: emailResult.messageId,
+      },
+      { status: 200 }
+    );
+  }
+
+  /* =======================================================
+     ERROR HANDLER
+  ======================================================= */
+
+  catch (error) {
+    console.error(
+      "Organizer invitation error:",
+      error
+    );
+
+    /* =====================================================
+       DELETE INVITATION IF EMAIL FAILED
+    ===================================================== */
+
+    try {
+      if (invitationId) {
+        const supabase = await createClient();
+
+        await supabase
+          .from("organizer_invitations")
+          .delete()
+          .eq("id", invitationId);
+      }
+    } catch (cleanupError) {
+      console.error(
+        "Invitation cleanup error:",
+        cleanupError
+      );
+    }
 
     return NextResponse.json(
       {
         error:
           error?.message ||
-          "Something went wrong while sending the invitation.",
+          "Something went wrong while sending the organizer invitation.",
       },
       { status: 500 }
     );
   }
 }
+
