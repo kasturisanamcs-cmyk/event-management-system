@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -26,8 +26,6 @@ export default function ResetPasswordPage() {
       try {
         const supabase = createClient();
 
-        // If Supabase sent a PKCE code in the URL,
-        // exchange it for a session.
         const code = searchParams.get("code");
 
         if (code) {
@@ -46,7 +44,6 @@ export default function ResetPasswordPage() {
           }
         }
 
-        // Check whether the user has a valid recovery session.
         const { data, error } = await supabase.auth.getSession();
 
         if (error || !data?.session) {
@@ -76,10 +73,6 @@ export default function ResetPasswordPage() {
     setErrorMessage("");
     setSuccessMessage("");
 
-    // -----------------------------
-    // PASSWORD VALIDATION
-    // -----------------------------
-
     if (!password) {
       setErrorMessage("Please enter a new password.");
       return;
@@ -107,7 +100,6 @@ export default function ResetPasswordPage() {
     try {
       const supabase = createClient();
 
-      // Make sure a recovery session exists.
       const { data: sessionData, error: sessionError } =
         await supabase.auth.getSession();
 
@@ -117,10 +109,6 @@ export default function ResetPasswordPage() {
         );
         return;
       }
-
-      // -----------------------------
-      // UPDATE PASSWORD
-      // -----------------------------
 
       const { error } = await supabase.auth.updateUser({
         password: password,
@@ -133,10 +121,6 @@ export default function ResetPasswordPage() {
         return;
       }
 
-      // -----------------------------
-      // SUCCESS
-      // -----------------------------
-
       setSuccessMessage(
         "Your password has been updated successfully."
       );
@@ -144,7 +128,6 @@ export default function ResetPasswordPage() {
       setPassword("");
       setConfirmPassword("");
 
-      // Give the user a moment to see the success message.
       setTimeout(() => {
         router.replace("/dashboard");
         router.refresh();
@@ -159,10 +142,6 @@ export default function ResetPasswordPage() {
       setLoading(false);
     }
   }
-
-  // -----------------------------
-  // CHECKING RESET LINK
-  // -----------------------------
 
   if (checkingSession) {
     return (
@@ -236,7 +215,7 @@ export default function ResetPasswordPage() {
           {/* Card */}
           <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-8">
 
-            {/* Invalid link */}
+            {/* Error */}
             {errorMessage && !successMessage && (
               <div
                 role="alert"
@@ -461,5 +440,25 @@ export default function ResetPasswordPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-[#020817] px-5 text-white">
+          <div className="text-center">
+            <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-white/10 border-t-blue-500" />
+
+            <p className="text-sm text-slate-400">
+              Loading password reset...
+            </p>
+          </div>
+        </main>
+      }
+    >
+      <ResetPasswordContent />
+    </Suspense>
   );
 }
