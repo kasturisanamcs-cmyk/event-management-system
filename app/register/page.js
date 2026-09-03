@@ -33,6 +33,12 @@ export default function RegisterPage() {
     const cleanName = fullName.trim();
     const cleanEmail = email.trim().toLowerCase();
 
+    // Get organizer invitation token from URL
+    const inviteToken =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("invite")
+        : null;
+
     // -----------------------------
     // FULL NAME VALIDATION
     // -----------------------------
@@ -157,15 +163,73 @@ export default function RegisterPage() {
       }
 
       // -----------------------------
-      // SUCCESS
+      // ORGANIZER INVITATION FLOW
+      // -----------------------------
+
+      if (inviteToken) {
+        // Email confirmation must be disabled for the
+        // invitation to be completed immediately.
+        if (!data.session) {
+          setSuccessMessage(
+            "Account created! Please verify your email, then sign in to complete the organizer invitation."
+          );
+
+          return;
+        }
+
+        setSuccessMessage(
+          "Account created! Accepting organizer invitation..."
+        );
+
+        const invitationResponse = await fetch(
+          "/api/organizer-invitations/accept",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              token: inviteToken,
+            }),
+          }
+        );
+
+        const invitationData = await invitationResponse.json();
+
+        if (!invitationResponse.ok) {
+          console.error(
+            "Organizer invitation acceptance error:",
+            invitationData
+          );
+
+          setErrorMessage(
+            invitationData.error ||
+              "Your account was created, but the organizer invitation could not be accepted."
+          );
+
+          return;
+        }
+
+        setSuccessMessage(
+          "Organizer account created successfully! Redirecting..."
+        );
+
+        setTimeout(() => {
+          router.push("/organizer/dashboard");
+          router.refresh();
+        }, 800);
+
+        return;
+      }
+
+      // -----------------------------
+      // NORMAL REGISTRATION
       // -----------------------------
 
       /*
-        IMPORTANT:
+        Normal users do not receive a role here.
 
-        We do NOT create the profile here.
-
-        Supabase database trigger:
+        Supabase database trigger creates:
 
         auth.users
              ↓
@@ -175,7 +239,6 @@ export default function RegisterPage() {
       */
 
       if (data.session) {
-        // Email confirmation is disabled.
         setSuccessMessage(
           "Account created successfully! Redirecting..."
         );
@@ -185,7 +248,6 @@ export default function RegisterPage() {
           router.refresh();
         }, 800);
       } else {
-        // Email confirmation is enabled.
         setSuccessMessage(
           "Account created successfully! Please check your email to verify your account."
         );
@@ -212,12 +274,10 @@ export default function RegisterPage() {
 
         <section className="relative hidden overflow-hidden lg:flex">
 
-          {/* Background glow */}
           <div className="absolute -left-40 -top-40 h-[500px] w-[500px] rounded-full bg-blue-600/20 blur-[130px]" />
 
           <div className="absolute -bottom-40 right-[-100px] h-[500px] w-[500px] rounded-full bg-cyan-500/10 blur-[130px]" />
 
-          {/* Grid background */}
           <div
             className="
               absolute inset-0 opacity-20
@@ -228,7 +288,6 @@ export default function RegisterPage() {
 
           <div className="relative z-10 flex w-full flex-col justify-between p-10 xl:p-14">
 
-            {/* Logo */}
             <Link href="/" className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 text-xl font-bold shadow-lg shadow-blue-500/20">
                 E
@@ -245,7 +304,6 @@ export default function RegisterPage() {
               </div>
             </Link>
 
-            {/* Main content */}
             <div className="max-w-xl">
 
               <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-500/10 px-4 py-2 text-sm text-blue-300">
@@ -270,7 +328,6 @@ export default function RegisterPage() {
               </p>
             </div>
 
-            {/* Footer */}
             <p className="text-sm text-slate-600">
               © 2026 EventNest. Smart Event Management System.
             </p>
@@ -283,12 +340,10 @@ export default function RegisterPage() {
 
         <section className="relative flex min-h-screen items-center justify-center px-6 py-10 sm:px-8 lg:px-16 xl:px-20">
 
-          {/* Mobile glow */}
           <div className="pointer-events-none absolute right-[-150px] top-[-150px] h-[400px] w-[400px] rounded-full bg-blue-600/10 blur-[120px] lg:hidden" />
 
           <div className="relative w-full max-w-xl">
 
-            {/* Mobile logo */}
             <div className="mb-8 flex justify-center lg:hidden">
 
               <Link href="/" className="flex items-center gap-3">
@@ -310,7 +365,6 @@ export default function RegisterPage() {
               </Link>
             </div>
 
-            {/* Heading */}
             <div className="mb-7">
 
               <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-blue-400">
@@ -324,12 +378,7 @@ export default function RegisterPage() {
               <p className="mt-4 leading-6 text-slate-400">
                 Join EventNest and start managing your event experience.
               </p>
-
             </div>
-
-            {/* ================================================= */}
-            {/* REGISTER CARD */}
-            {/* ================================================= */}
 
             <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-8">
 
@@ -551,13 +600,16 @@ export default function RegisterPage() {
                     className="text-xs leading-5 text-slate-500"
                   >
                     I agree to the{" "}
+
                     <Link
                       href="/terms"
                       className="text-blue-400 hover:text-blue-300"
                     >
                       Terms of Service
                     </Link>{" "}
+
                     and{" "}
+
                     <Link
                       href="/privacy"
                       className="text-blue-400 hover:text-blue-300"
