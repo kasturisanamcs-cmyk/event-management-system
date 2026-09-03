@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+
+export const runtime = "nodejs";
 
 export async function POST(request) {
   try {
+    // --------------------------------------------------
+    // 1. Check logged-in user
+    // --------------------------------------------------
     const supabase = await createClient();
 
-    // 1. Check if user is logged in
     const {
       data: { user },
       error: userError,
@@ -20,7 +25,9 @@ export async function POST(request) {
       );
     }
 
+    // --------------------------------------------------
     // 2. Get invitation token
+    // --------------------------------------------------
     const body = await request.json();
     const { token } = body;
 
@@ -33,14 +40,55 @@ export async function POST(request) {
       );
     }
 
-    // 3. Find invitation
-    const { data: invitation, error: invitationError } = await supabase
-      .from("organizer_invitations")
-      .select("*")
-      .eq("token", token)
-      .single();
+    // --------------------------------------------------
+    // 3. Create Supabase admin client
+    // --------------------------------------------------
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (invitationError || !invitation) {
+    if (!serviceRoleKey) {
+      console.error("SUPABASE_SERVICE_ROLE_KEY is missing.");
+
+      return NextResponse.json(
+        {
+          error: "Server configuration error.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const supabaseAdmin = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      serviceRoleKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
+
+    // --------------------------------------------------
+    // 4. Find invitation using service role
+    // --------------------------------------------------
+    const { data: invitation, error: invitationError } =
+      await supabaseAdmin
+        .from("organizer_invitations")
+        .select("*")
+        .eq("token", token)
+        .maybeSingle();
+
+    if (invitationError) {
+      console.error("Invitation lookup error:", invitationError);
+
+      return NextResponse.json(
+        {
+          error: "Could not verify the invitation.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!invitation) {
       return NextResponse.json(
         {
           error: "Invalid invitation.",
@@ -49,7 +97,9 @@ export async function POST(request) {
       );
     }
 
-    // 4. Check invitation status
+    // --------------------------------------------------
+    // 5. Check invitation status
+    // --------------------------------------------------
     if (invitation.status !== "PENDING") {
       return NextResponse.json(
         {
@@ -59,7 +109,9 @@ export async function POST(request) {
       );
     }
 
-    // 5. Check invitation expiry
+    // --------------------------------------------------
+    // 6. Check invitation expiry
+    // --------------------------------------------------
     if (new Date(invitation.expires_at) < new Date()) {
       return NextResponse.json(
         {
@@ -69,7 +121,9 @@ export async function POST(request) {
       );
     }
 
-    // 6. Make sure logged-in email matches invitation email
+    // --------------------------------------------------
+    // 7. Check email
+    // --------------------------------------------------
     if (
       user.email &&
       invitation.email.toLowerCase() !== user.email.toLowerCase()
@@ -83,8 +137,10 @@ export async function POST(request) {
       );
     }
 
-    // 7. Update user's profile role to ORGANIZER
-    const { error: profileError } = await supabase
+    // --------------------------------------------------
+    // 8. Change profile role to ORGANIZER
+    // --------------------------------------------------
+    const { error: profileError } = await supabaseAdmin
       .from("profiles")
       .update({
         role: "ORGANIZER",
@@ -102,15 +158,17 @@ export async function POST(request) {
       );
     }
 
-    // 8. Connect organizer with the event
-    const { error: organizerError } = await supabase
+    // --------------------------------------------------
+    // 9. Connect organizer to event
+    // --------------------------------------------------
+    const { error: organizerError } = await supabaseAdmin
       .from("event_organizers")
       .insert({
         event_id: invitation.event_id,
         organizer_id: user.id,
       });
 
-    // If relationship already exists, continue
+    // If already connected, continue
     if (organizerError && organizerError.code !== "23505") {
       console.error("Event organizer error:", organizerError);
 
@@ -122,8 +180,10 @@ export async function POST(request) {
       );
     }
 
-    // 9. Mark invitation as accepted
-    const { error: updateError } = await supabase
+    // --------------------------------------------------
+    // 10. Mark invitation as accepted
+    // --------------------------------------------------
+    const { error: updateError } = await supabaseAdmin
       .from("organizer_invitations")
       .update({
         status: "ACCEPTED",
@@ -142,7 +202,9 @@ export async function POST(request) {
       );
     }
 
-    // 10. Success
+    // --------------------------------------------------
+    // 11. Success
+    // --------------------------------------------------
     return NextResponse.json({
       success: true,
       message: "Organizer invitation accepted successfully.",
