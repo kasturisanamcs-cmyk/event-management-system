@@ -87,7 +87,7 @@ const menus = {
         },
         {
           name: "My Events",
-          href: "/dashboard/events",
+          href: "/organizer/events",
           icon: "▤",
         },
         {
