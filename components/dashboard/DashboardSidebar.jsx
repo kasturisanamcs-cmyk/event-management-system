@@ -196,7 +196,10 @@ const menus = {
   ],
 };
 
-export default function DashboardSidebar() {
+export default function DashboardSidebar({
+  mobileOpen = false,
+  onClose,
+}) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -306,8 +309,6 @@ export default function DashboardSidebar() {
   /*
    * If an organizer is inside /dashboard/*
    * keep the ORGANIZER menu.
-   *
-   * This is the important fix.
    */
 
   if (
@@ -352,173 +353,229 @@ export default function DashboardSidebar() {
       ? "/participant/settings"
       : "/dashboard/settings";
 
+  function handleNavigation() {
+    if (onClose) {
+      onClose();
+    }
+  }
+
   return (
-    <aside className="flex h-screen w-72 shrink-0 flex-col border-r border-white/10 bg-[#050b18] text-white">
+    <>
+      {/* Mobile Overlay */}
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={onClose}
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+        />
+      )}
 
-      {/* =====================================================
-          LOGO
-      ====================================================== */}
+      {/* Sidebar */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 flex-col border-r border-white/10 bg-[#050b18] text-white shadow-2xl transition-transform duration-300 ease-in-out lg:relative lg:z-auto lg:translate-x-0 lg:shadow-none ${
+          mobileOpen
+            ? "translate-x-0"
+            : "-translate-x-full"
+        }`}
+      >
 
-      <div className="border-b border-white/10 px-6 py-5">
+        {/* =====================================================
+            LOGO
+        ====================================================== */}
 
-        <Link
-          href={dashboardHref}
-          className="flex items-center gap-3"
-        >
+        <div className="border-b border-white/10 px-6 py-5">
 
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 font-bold text-white">
-            E
+          <div className="flex items-center justify-between">
+
+            <Link
+              href={dashboardHref}
+              onClick={handleNavigation}
+              className="flex items-center gap-3"
+            >
+
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 font-bold text-white">
+                E
+              </div>
+
+              <div>
+                <p className="font-bold text-white">
+                  EventNest
+                </p>
+
+                <p className="text-xs text-slate-500">
+                  Smart Event Management
+                </p>
+              </div>
+
+            </Link>
+
+            {/* Mobile Close Button */}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close navigation menu"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/[0.06] hover:text-white lg:hidden"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
           </div>
 
-          <div>
-            <p className="font-bold text-white">
-              EventNest
-            </p>
-
-            <p className="text-xs text-slate-500">
-              Smart Event Management
-            </p>
-          </div>
-
-        </Link>
-
-      </div>
+        </div>
 
 
-      {/* =====================================================
-          CURRENT ROLE
-      ====================================================== */}
+        {/* =====================================================
+            CURRENT ROLE
+        ====================================================== */}
 
-      <div className="border-b border-white/10 px-6 py-4">
+        <div className="border-b border-white/10 px-6 py-4">
 
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-600">
-          Current Role
-        </p>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-600">
+            Current Role
+          </p>
 
-        <p className="mt-1 text-sm font-semibold text-blue-400">
-          {displayRole}
-        </p>
+          <p className="mt-1 text-sm font-semibold text-blue-400">
+            {displayRole}
+          </p>
 
-      </div>
+        </div>
 
 
-      {/* =====================================================
-          NAVIGATION
-      ====================================================== */}
+        {/* =====================================================
+            NAVIGATION
+        ====================================================== */}
 
-      <nav className="flex-1 overflow-y-auto px-4 py-5">
+        <nav className="flex-1 overflow-y-auto px-4 py-5">
 
-        {currentMenu.map((section) => (
+          {currentMenu.map((section) => (
 
-          <div
-            key={section.section}
-            className="mb-7"
-          >
+            <div
+              key={section.section}
+              className="mb-7"
+            >
 
-            <p className="mb-3 px-3 text-[11px] font-semibold tracking-widest text-slate-600">
-              {section.section}
-            </p>
+              <p className="mb-3 px-3 text-[11px] font-semibold tracking-widest text-slate-600">
+                {section.section}
+              </p>
 
-            <div className="space-y-1">
+              <div className="space-y-1">
 
-              {section.items.map((item) => {
+                {section.items.map((item) => {
 
-                const active =
-                  pathname === item.href ||
-                  (
-                    item.href !== dashboardHref &&
-                    pathname.startsWith(item.href + "/")
+                  const active =
+                    pathname === item.href ||
+                    (
+                      item.href !== dashboardHref &&
+                      pathname.startsWith(item.href + "/")
+                    );
+
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      onClick={handleNavigation}
+                      className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${
+                        active
+                          ? "bg-blue-600/15 text-blue-400"
+                          : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+                      }`}
+                    >
+
+                      <span className="flex w-5 shrink-0 justify-center text-sm">
+                        {item.icon}
+                      </span>
+
+                      <span>
+                        {item.name}
+                      </span>
+
+                    </Link>
                   );
 
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${
-                      active
-                        ? "bg-blue-600/15 text-blue-400"
-                        : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
-                    }`}
-                  >
+                })}
 
-                    <span className="flex w-5 shrink-0 justify-center text-sm">
-                      {item.icon}
-                    </span>
-
-                    <span>
-                      {item.name}
-                    </span>
-
-                  </Link>
-                );
-
-              })}
+              </div>
 
             </div>
 
-          </div>
+          ))}
 
-        ))}
-
-      </nav>
+        </nav>
 
 
-      {/* =====================================================
-          ACCOUNT
-      ====================================================== */}
+        {/* =====================================================
+            ACCOUNT
+        ====================================================== */}
 
-      <div className="border-t border-white/10 p-4">
+        <div className="border-t border-white/10 p-4">
 
-        {/* Profile */}
+          {/* Profile */}
 
-        <Link
-          href={profileHref}
-          className="mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-white"
-        >
+          <Link
+            href={profileHref}
+            onClick={handleNavigation}
+            className="mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-white"
+          >
 
-          <span className="flex w-5 justify-center">
-            ◯
-          </span>
+            <span className="flex w-5 justify-center">
+              ◯
+            </span>
 
-          Profile
+            Profile
 
-        </Link>
-
-
-        {/* Settings */}
-
-        <Link
-          href={settingsHref}
-          className="mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-white"
-        >
-
-          <span className="flex w-5 justify-center">
-            ⚙
-          </span>
-
-          Settings
-
-        </Link>
+          </Link>
 
 
-        {/* Logout */}
+          {/* Settings */}
 
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-red-400 transition hover:bg-red-500/10"
-        >
+          <Link
+            href={settingsHref}
+            onClick={handleNavigation}
+            className="mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-white"
+          >
 
-          <span className="flex w-5 justify-center">
-            ↪
-          </span>
+            <span className="flex w-5 justify-center">
+              ⚙
+            </span>
 
-          Logout
+            Settings
 
-        </button>
+          </Link>
 
-      </div>
 
-    </aside>
+          {/* Logout */}
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-red-400 transition hover:bg-red-500/10"
+          >
+
+            <span className="flex w-5 justify-center">
+              ↪
+            </span>
+
+            Logout
+
+          </button>
+
+        </div>
+
+      </aside>
+    </>
   );
 }
