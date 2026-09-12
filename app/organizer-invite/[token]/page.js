@@ -7,7 +7,7 @@ export default function OrganizerInvitePage() {
   const router = useRouter();
 
   function handleAcceptInvitation() {
-    router.push(`/register?invite=${params.token}`);
+   router.push(`/register?invite=${params.token}&type=organizer`);
   }
 
   return (
