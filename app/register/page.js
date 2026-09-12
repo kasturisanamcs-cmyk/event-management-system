@@ -33,15 +33,21 @@ export default function RegisterPage() {
     const cleanName = fullName.trim();
     const cleanEmail = email.trim().toLowerCase();
 
-    // Get organizer invitation token from URL
-    const inviteToken =
+    // --------------------------------------------------
+    // GET INVITATION INFORMATION
+    // --------------------------------------------------
+
+    const searchParams =
       typeof window !== "undefined"
-        ? new URLSearchParams(window.location.search).get("invite")
+        ? new URLSearchParams(window.location.search)
         : null;
 
-    // -----------------------------
+    const inviteToken = searchParams?.get("invite") || null;
+    const inviteType = searchParams?.get("type") || null;
+
+    // --------------------------------------------------
     // FULL NAME VALIDATION
-    // -----------------------------
+    // --------------------------------------------------
 
     if (!cleanName) {
       setErrorMessage("Please enter your full name.");
@@ -58,9 +64,9 @@ export default function RegisterPage() {
       return;
     }
 
-    // -----------------------------
+    // --------------------------------------------------
     // EMAIL VALIDATION
-    // -----------------------------
+    // --------------------------------------------------
 
     if (!cleanEmail) {
       setErrorMessage("Please enter your email address.");
@@ -74,9 +80,9 @@ export default function RegisterPage() {
       return;
     }
 
-    // -----------------------------
+    // --------------------------------------------------
     // PASSWORD VALIDATION
-    // -----------------------------
+    // --------------------------------------------------
 
     if (!password) {
       setErrorMessage("Please enter a password.");
@@ -93,9 +99,9 @@ export default function RegisterPage() {
       return;
     }
 
-    // -----------------------------
+    // --------------------------------------------------
     // CONFIRM PASSWORD
-    // -----------------------------
+    // --------------------------------------------------
 
     if (!confirmPassword) {
       setErrorMessage("Please confirm your password.");
@@ -107,9 +113,9 @@ export default function RegisterPage() {
       return;
     }
 
-    // -----------------------------
+    // --------------------------------------------------
     // TERMS
-    // -----------------------------
+    // --------------------------------------------------
 
     if (!termsAccepted) {
       setErrorMessage("Please accept the Terms of Service.");
@@ -121,9 +127,9 @@ export default function RegisterPage() {
     try {
       const supabase = createClient();
 
-      // -----------------------------
+      // --------------------------------------------------
       // CREATE SUPABASE AUTH ACCOUNT
-      // -----------------------------
+      // --------------------------------------------------
 
       const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
@@ -162,13 +168,14 @@ export default function RegisterPage() {
         return;
       }
 
-      // -----------------------------
-      // ORGANIZER INVITATION FLOW
-      // -----------------------------
+      // ==================================================
+      // ORGANIZER INVITATION
+      // ==================================================
 
-      if (inviteToken) {
-        // Email confirmation must be disabled for the
-        // invitation to be completed immediately.
+      if (
+        inviteToken &&
+        inviteType === "organizer"
+      ) {
         if (!data.session) {
           setSuccessMessage(
             "Account created! Please verify your email, then sign in to complete the organizer invitation."
@@ -194,7 +201,8 @@ export default function RegisterPage() {
           }
         );
 
-        const invitationData = await invitationResponse.json();
+        const invitationData =
+          await invitationResponse.json();
 
         if (!invitationResponse.ok) {
           console.error(
@@ -222,9 +230,71 @@ export default function RegisterPage() {
         return;
       }
 
-      // -----------------------------
+      // ==================================================
+      // COMPETITION MEMBER INVITATION
+      // ==================================================
+
+      if (
+        inviteToken &&
+        inviteType === "competition-member"
+      ) {
+        if (!data.session) {
+          setSuccessMessage(
+            "Account created! Please verify your email, then sign in to complete the Competition Member invitation."
+          );
+
+          return;
+        }
+
+        setSuccessMessage(
+          "Account created! Accepting Competition Member invitation..."
+        );
+
+        const invitationResponse = await fetch(
+          "/api/competition-member-invitations/accept",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              token: inviteToken,
+            }),
+          }
+        );
+
+        const invitationData =
+          await invitationResponse.json();
+
+        if (!invitationResponse.ok) {
+          console.error(
+            "Competition Member invitation acceptance error:",
+            invitationData
+          );
+
+          setErrorMessage(
+            invitationData.error ||
+              "Your account was created, but the Competition Member invitation could not be accepted."
+          );
+
+          return;
+        }
+
+        setSuccessMessage(
+          "Competition Member account created successfully! Redirecting..."
+        );
+
+        setTimeout(() => {
+          router.push("/competition-member/dashboard");
+          router.refresh();
+        }, 800);
+
+        return;
+      }
+
+      // ==================================================
       // NORMAL REGISTRATION
-      // -----------------------------
+      // ==================================================
 
       /*
         Normal users do not receive a role here.
@@ -268,12 +338,9 @@ export default function RegisterPage() {
     <main className="min-h-screen bg-[#020817] text-white">
       <div className="grid min-h-screen lg:grid-cols-2">
 
-        {/* ===================================================== */}
         {/* LEFT SIDE */}
-        {/* ===================================================== */}
 
         <section className="relative hidden overflow-hidden lg:flex">
-
           <div className="absolute -left-40 -top-40 h-[500px] w-[500px] rounded-full bg-blue-600/20 blur-[130px]" />
 
           <div className="absolute -bottom-40 right-[-100px] h-[500px] w-[500px] rounded-full bg-cyan-500/10 blur-[130px]" />
@@ -288,7 +355,10 @@ export default function RegisterPage() {
 
           <div className="relative z-10 flex w-full flex-col justify-between p-10 xl:p-14">
 
-            <Link href="/" className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="flex items-center gap-3"
+            >
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 text-xl font-bold shadow-lg shadow-blue-500/20">
                 E
               </div>
@@ -326,17 +396,17 @@ export default function RegisterPage() {
                 Create your EventNest account and become part of a
                 smarter way to discover, organize and manage events.
               </p>
+
             </div>
 
             <p className="text-sm text-slate-600">
               © 2026 EventNest. Smart Event Management System.
             </p>
+
           </div>
         </section>
 
-        {/* ===================================================== */}
         {/* RIGHT SIDE */}
-        {/* ===================================================== */}
 
         <section className="relative flex min-h-screen items-center justify-center px-6 py-10 sm:px-8 lg:px-16 xl:px-20">
 
@@ -344,10 +414,14 @@ export default function RegisterPage() {
 
           <div className="relative w-full max-w-xl">
 
+            {/* MOBILE LOGO */}
+
             <div className="mb-8 flex justify-center lg:hidden">
 
-              <Link href="/" className="flex items-center gap-3">
-
+              <Link
+                href="/"
+                className="flex items-center gap-3"
+              >
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 text-xl font-bold">
                   E
                 </div>
@@ -361,8 +435,8 @@ export default function RegisterPage() {
                     Smart Event Management
                   </p>
                 </div>
-
               </Link>
+
             </div>
 
             <div className="mb-7">
@@ -378,6 +452,7 @@ export default function RegisterPage() {
               <p className="mt-4 leading-6 text-slate-400">
                 Join EventNest and start managing your event experience.
               </p>
+
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-8">
@@ -387,9 +462,9 @@ export default function RegisterPage() {
                 onSubmit={handleSubmit}
               >
 
-                {/* Full Name */}
-                <div>
+                {/* FULL NAME */}
 
+                <div>
                   <label
                     htmlFor="name"
                     className="mb-2 block text-sm font-medium text-slate-200"
@@ -418,12 +493,11 @@ export default function RegisterPage() {
                       disabled:cursor-not-allowed disabled:opacity-60
                     "
                   />
-
                 </div>
 
-                {/* Email */}
-                <div>
+                {/* EMAIL */}
 
+                <div>
                   <label
                     htmlFor="email"
                     className="mb-2 block text-sm font-medium text-slate-200"
@@ -452,12 +526,11 @@ export default function RegisterPage() {
                       disabled:cursor-not-allowed disabled:opacity-60
                     "
                   />
-
                 </div>
 
-                {/* Password */}
-                <div>
+                {/* PASSWORD */}
 
+                <div>
                   <label
                     htmlFor="password"
                     className="mb-2 block text-sm font-medium text-slate-200"
@@ -469,7 +542,11 @@ export default function RegisterPage() {
 
                     <input
                       id="password"
-                      type={showPassword ? "text" : "password"}
+                      type={
+                        showPassword
+                          ? "text"
+                          : "password"
+                      }
                       value={password}
                       onChange={(event) =>
                         setPassword(event.target.value)
@@ -492,7 +569,9 @@ export default function RegisterPage() {
                     <button
                       type="button"
                       onClick={() =>
-                        setShowPassword((previous) => !previous)
+                        setShowPassword(
+                          (previous) => !previous
+                        )
                       }
                       disabled={loading}
                       className="
@@ -512,12 +591,11 @@ export default function RegisterPage() {
                   <p className="mt-2 text-xs text-slate-600">
                     Use at least 8 characters.
                   </p>
-
                 </div>
 
-                {/* Confirm Password */}
-                <div>
+                {/* CONFIRM PASSWORD */}
 
+                <div>
                   <label
                     htmlFor="confirmPassword"
                     className="mb-2 block text-sm font-medium text-slate-200"
@@ -536,7 +614,9 @@ export default function RegisterPage() {
                       }
                       value={confirmPassword}
                       onChange={(event) =>
-                        setConfirmPassword(event.target.value)
+                        setConfirmPassword(
+                          event.target.value
+                        )
                       }
                       placeholder="Confirm your password"
                       autoComplete="new-password"
@@ -574,10 +654,10 @@ export default function RegisterPage() {
                     </button>
 
                   </div>
-
                 </div>
 
-                {/* Terms */}
+                {/* TERMS */}
+
                 <div className="flex items-start gap-3 pt-1">
 
                   <input
@@ -585,7 +665,9 @@ export default function RegisterPage() {
                     type="checkbox"
                     checked={termsAccepted}
                     onChange={(event) =>
-                      setTermsAccepted(event.target.checked)
+                      setTermsAccepted(
+                        event.target.checked
+                      )
                     }
                     disabled={loading}
                     className="
@@ -621,7 +703,8 @@ export default function RegisterPage() {
 
                 </div>
 
-                {/* Error */}
+                {/* ERROR */}
+
                 {errorMessage && (
                   <div
                     role="alert"
@@ -637,7 +720,8 @@ export default function RegisterPage() {
                   </div>
                 )}
 
-                {/* Success */}
+                {/* SUCCESS */}
+
                 {successMessage && (
                   <div
                     role="status"
@@ -653,7 +737,8 @@ export default function RegisterPage() {
                   </div>
                 )}
 
-                {/* Create Account */}
+                {/* CREATE ACCOUNT */}
+
                 <button
                   type="submit"
                   disabled={loading}
@@ -684,7 +769,8 @@ export default function RegisterPage() {
 
               </form>
 
-              {/* Divider */}
+              {/* DIVIDER */}
+
               <div className="my-6 flex items-center gap-4">
 
                 <div className="h-px flex-1 bg-white/10" />
@@ -697,7 +783,8 @@ export default function RegisterPage() {
 
               </div>
 
-              {/* Login */}
+              {/* LOGIN */}
+
               <div className="text-center">
 
                 <Link
@@ -711,7 +798,8 @@ export default function RegisterPage() {
 
             </div>
 
-            {/* Security note */}
+            {/* SECURITY NOTE */}
+
             <div className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-600">
               <span>🔒</span>
               Your information is protected.
