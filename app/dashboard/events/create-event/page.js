@@ -32,6 +32,22 @@ export default function CreateEventPage() {
     };
   }, [previewUrl]);
 
+  // Calculate maximum allowed end date.
+  // Example:
+  // Start = 2026-09-04
+  // Maximum End = 2026-09-08
+  // This gives 5 calendar days total.
+  function getMaxEndDate(startDate) {
+    if (!startDate) {
+      return "";
+    }
+
+    const date = new Date(`${startDate}T00:00:00`);
+    date.setDate(date.getDate() + 4);
+
+    return date.toISOString().split("T")[0];
+  }
+
   function handleChange(e) {
     const { name, value } = e.target;
 
@@ -43,8 +59,14 @@ export default function CreateEventPage() {
 
       // Start date changes
       if (name === "start_date") {
+        const maxEndDate = getMaxEndDate(value);
+
         // End date cannot be before start date
-        if (prev.end_date && prev.end_date < value) {
+        // and cannot be more than 5 calendar days.
+        if (
+          prev.end_date &&
+          (prev.end_date < value || prev.end_date > maxEndDate)
+        ) {
           updated.end_date = "";
         }
 
@@ -54,17 +76,6 @@ export default function CreateEventPage() {
           prev.registration_deadline > value
         ) {
           updated.registration_deadline = "";
-        }
-      }
-
-      // End date changes
-      if (name === "end_date") {
-        // Registration deadline cannot be after start date
-        if (
-          prev.registration_deadline &&
-          prev.registration_deadline > value
-        ) {
-          // Keep registration deadline if it is before start date
         }
       }
 
@@ -156,53 +167,39 @@ export default function CreateEventPage() {
       }
 
       if (!user) {
-  router.push("/login");
-  return;
-}
+        router.push("/login");
+        return;
+      }
 
-// --------------------------------
-// CHECK USER ROLE
-// --------------------------------
+      // --------------------------------
+      // CHECK USER ROLE
+      // --------------------------------
 
-const {
-  data: profile,
-  error: profileError,
-} = await supabase
-  .from("profiles")
-  .select("role")
-  .eq("id", user.id)
-  .maybeSingle();
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
 
-console.log("Logged in user ID:", user.id);
-console.log("Profile:", profile);
-console.log("Profile error:", profileError);
+      console.log("Logged in user ID:", user.id);
+      console.log("Profile:", profile);
+      console.log("Profile error:", profileError);
 
-if (profileError) {
-  throw profileError;
-}
+      if (profileError) {
+        throw profileError;
+      }
 
-if (!profile) {
-  setError("Your profile could not be found.");
-  return;
-}
+      if (!profile) {
+        setError("Your profile could not be found.");
+        return;
+      }
 
-const userRole = profile.role?.trim().toUpperCase();
+      const userRole = profile.role?.trim().toUpperCase();
 
-console.log("User role:", userRole);
-
-
-// BASIC VALIDATION
-if (
-  !form.name.trim() ||
-  !form.description.trim() ||
-  !form.start_date ||
-  !form.end_date ||
-  !form.registration_deadline ||
-  !form.venue.trim()
-) {
-  setError("Please fill in all fields.");
-  return;
-}
+      console.log("User role:", userRole);
 
       // --------------------------------
       // BASIC VALIDATION
@@ -228,6 +225,23 @@ if (
         setError("End date cannot be before start date.");
         return;
       }
+
+      // --------------------------------
+      // MAXIMUM 5 CALENDAR DAYS
+      // --------------------------------
+
+      const maxEndDate = getMaxEndDate(form.start_date);
+
+      if (form.end_date > maxEndDate) {
+        setError(
+          "Event duration cannot be more than 5 calendar days."
+        );
+        return;
+      }
+
+      // --------------------------------
+      // REGISTRATION DEADLINE
+      // --------------------------------
 
       if (form.registration_deadline > form.start_date) {
         setError(
@@ -300,17 +314,16 @@ if (
         throw insertError;
       }
 
-    console.log("Event created:", data);
+      console.log("Event created:", data);
 
-    setSuccess("Event created successfully!");
+      setSuccess("Event created successfully!");
 
-    setTimeout(() => {
-      router.push("/dashboard/events");
-      router.refresh();
-    }, 800);
+      setTimeout(() => {
+        router.push("/dashboard/events");
+        router.refresh();
+      }, 800);
 
       removeImage();
-
     } catch (err) {
       console.error("Create event error:", err);
 
@@ -324,6 +337,8 @@ if (
   }
 
   const today = new Date().toISOString().split("T")[0];
+
+  const maxEndDate = getMaxEndDate(form.start_date);
 
   return (
     <main className="min-h-screen bg-[#020817] px-5 py-10 text-white sm:px-8">
@@ -527,9 +542,14 @@ if (
                   name="end_date"
                   value={form.end_date}
                   min={form.start_date || today}
+                  max={maxEndDate || undefined}
                   onChange={handleChange}
                   className="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-white outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500 [color-scheme:dark]"
                 />
+
+                <p className="mt-2 text-xs text-slate-500">
+                  Event duration can be a maximum of 5 calendar days.
+                </p>
               </div>
 
             </div>
