@@ -3,11 +3,14 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 
+export const runtime = "nodejs";
+
 export async function POST(request) {
   try {
     // --------------------------------------------------
     // 1. Check logged-in user
     // --------------------------------------------------
+
     const supabase = await createClient();
 
     const {
@@ -25,6 +28,7 @@ export async function POST(request) {
     // --------------------------------------------------
     // 2. Read request body
     // --------------------------------------------------
+
     const body = await request.json();
 
     const competitionId = body.competitionId;
@@ -40,6 +44,7 @@ export async function POST(request) {
     // --------------------------------------------------
     // 3. Validate email
     // --------------------------------------------------
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!emailRegex.test(email)) {
@@ -52,6 +57,7 @@ export async function POST(request) {
     // --------------------------------------------------
     // 4. Get organizer profile
     // --------------------------------------------------
+
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("id, role, full_name")
@@ -59,6 +65,8 @@ export async function POST(request) {
       .single();
 
     if (profileError || !profile) {
+      console.error("Profile lookup error:", profileError);
+
       return NextResponse.json(
         { error: "Your profile could not be found." },
         { status: 404 }
@@ -73,16 +81,30 @@ export async function POST(request) {
     }
 
     // --------------------------------------------------
-    // 5. Create service-role client
+    // 5. Check server environment variables
     // --------------------------------------------------
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const gmailUser = process.env.GMAIL_USER;
+    const gmailPassword = process.env.GMAIL_APP_PASSWORD;
 
     if (!supabaseUrl || !serviceRoleKey) {
-      console.error("Supabase service role environment variables are missing.");
+      console.error(
+        "Supabase service-role environment variables are missing."
+      );
 
       return NextResponse.json(
         { error: "Server configuration is incomplete." },
+        { status: 500 }
+      );
+    }
+
+    if (!gmailUser || !gmailPassword) {
+      console.error("Gmail environment variables are missing.");
+
+      return NextResponse.json(
+        { error: "Email service is not configured." },
         { status: 500 }
       );
     }
@@ -95,6 +117,7 @@ export async function POST(request) {
     // --------------------------------------------------
     // 6. Get competition and event
     // --------------------------------------------------
+
     const { data: competition, error: competitionError } =
       await supabase
         .from("competitions")
@@ -107,7 +130,7 @@ export async function POST(request) {
             id,
             name
           )
-          `
+        `
         )
         .eq("id", competitionId)
         .single();
@@ -124,13 +147,16 @@ export async function POST(request) {
     // --------------------------------------------------
     // 7. Verify organizer is assigned to this event
     // --------------------------------------------------
-    const { data: organizerAssignment, error: assignmentError } =
-      await supabase
-        .from("event_organizers")
-        .select("id")
-        .eq("event_id", competition.event_id)
-        .eq("organizer_id", user.id)
-        .maybeSingle();
+
+    const {
+      data: organizerAssignment,
+      error: assignmentError,
+    } = await supabase
+      .from("event_organizers")
+      .select("id")
+      .eq("event_id", competition.event_id)
+      .eq("organizer_id", user.id)
+      .maybeSingle();
 
     if (assignmentError) {
       console.error(
@@ -155,8 +181,9 @@ export async function POST(request) {
     }
 
     // --------------------------------------------------
-    // 8. Find existing EventNest user with this email
+    // 8. Find existing EventNest user
     // --------------------------------------------------
+
     let existingUser = null;
 
     for (let page = 1; page <= 10; page++) {
@@ -188,16 +215,19 @@ export async function POST(request) {
     }
 
     // --------------------------------------------------
-    // 9. Check whether user is already a competition member
+    // 9. Check existing membership
     // --------------------------------------------------
+
     if (existingUser) {
-      const { data: existingMembership, error: membershipError } =
-        await adminSupabase
-          .from("competition_members")
-          .select("id")
-          .eq("competition_id", competitionId)
-          .eq("member_id", existingUser.id)
-          .maybeSingle();
+      const {
+        data: existingMembership,
+        error: membershipError,
+      } = await adminSupabase
+        .from("competition_members")
+        .select("id")
+        .eq("competition_id", competitionId)
+        .eq("member_id", existingUser.id)
+        .maybeSingle();
 
       if (membershipError) {
         console.error(
@@ -225,14 +255,17 @@ export async function POST(request) {
     // --------------------------------------------------
     // 10. Check existing pending invitation
     // --------------------------------------------------
-    const { data: existingInvitation, error: invitationCheckError } =
-      await adminSupabase
-        .from("competition_member_invitations")
-        .select("*")
-        .eq("competition_id", competitionId)
-        .eq("email", email)
-        .eq("status", "PENDING")
-        .maybeSingle();
+
+    const {
+      data: existingInvitation,
+      error: invitationCheckError,
+    } = await adminSupabase
+      .from("competition_member_invitations")
+      .select("*")
+      .eq("competition_id", competitionId)
+      .eq("email", email)
+      .eq("status", "PENDING")
+      .maybeSingle();
 
     if (invitationCheckError) {
       console.error(
@@ -247,8 +280,9 @@ export async function POST(request) {
     }
 
     // --------------------------------------------------
-    // 11. Create new token and expiry
+    // 11. Create token and expiry
     // --------------------------------------------------
+
     const token = crypto.randomUUID();
 
     const expiresAt = new Date(
@@ -258,7 +292,6 @@ export async function POST(request) {
     let invitation;
     let createdNewInvitation = false;
 
-    // Keep old values so we can restore them if email sending fails
     const previousInvitation = existingInvitation
       ? {
           token: existingInvitation.token,
@@ -268,8 +301,9 @@ export async function POST(request) {
       : null;
 
     // --------------------------------------------------
-    // 12. Update existing invitation or create new one
+    // 12. Update or create invitation
     // --------------------------------------------------
+
     if (existingInvitation) {
       const { data, error } = await adminSupabase
         .from("competition_member_invitations")
@@ -328,6 +362,7 @@ export async function POST(request) {
     // --------------------------------------------------
     // 13. Create invitation URL
     // --------------------------------------------------
+
     const siteUrl =
       process.env.NEXT_PUBLIC_SITE_URL ||
       "http://localhost:3000";
@@ -336,57 +371,41 @@ export async function POST(request) {
       `${siteUrl}/competition-member-invite/${invitation.token}`;
 
     // --------------------------------------------------
-    // 14. Check Gmail configuration
+    // 14. Create Gmail transporter
     // --------------------------------------------------
-    if (
-      !process.env.GMAIL_USER ||
-      !process.env.GMAIL_APP_PASSWORD
-    ) {
-      console.error(
-        "Gmail environment variables are missing."
-      );
 
-      if (createdNewInvitation) {
-        await adminSupabase
-          .from("competition_member_invitations")
-          .delete()
-          .eq("id", invitation.id);
-      } else if (previousInvitation) {
-        await adminSupabase
-          .from("competition_member_invitations")
-          .update({
-            token: previousInvitation.token,
-            expires_at: previousInvitation.expires_at,
-            invited_by: previousInvitation.invited_by,
-          })
-          .eq("id", invitation.id);
-      }
-
-      return NextResponse.json(
-        { error: "Email service is not configured." },
-        { status: 500 }
-      );
-    }
-
-    // --------------------------------------------------
-    // 15. Create Gmail transporter
-    // --------------------------------------------------
     const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD,
-      },
-    });
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false,
 
+  auth: {
+    user: gmailUser,
+    pass: gmailPassword,
+  },
+
+  requireTLS: true,
+
+  tls: {
+    rejectUnauthorized: false,
+  },
+
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 15000,
+});
     // --------------------------------------------------
-    // 16. Send invitation email
+    // 15. Send invitation email
     // --------------------------------------------------
+
     try {
       await transporter.sendMail({
-        from: `"EventNest" <${process.env.GMAIL_USER}>`,
+        from: `"EventNest" <${gmailUser}>`,
+
         to: email,
-        subject: `You're invited to join ${competition.name} on EventNest`,
+
+        subject:
+          `You're invited to join ${competition.name} on EventNest`,
 
         text: `
 Hello,
@@ -394,6 +413,7 @@ Hello,
 You have been invited to join "${competition.name}" as a Competition Member on EventNest.
 
 Competition: ${competition.name}
+
 Event: ${competition.events?.name || "EventNest Event"}
 
 Accept your invitation here:
@@ -405,6 +425,7 @@ This invitation is valid for 48 hours.
 If you did not expect this invitation, you can safely ignore this email.
 
 Regards,
+
 EventNest Team
         `,
 
@@ -521,7 +542,18 @@ EventNest Team
         emailError
       );
 
-      // Restore previous invitation if this was a resend
+      console.error(
+        "Email error message:",
+        emailError?.message
+      );
+
+      console.error(
+        "Email error code:",
+        emailError?.code
+      );
+
+      // Restore database state if email failed
+
       if (createdNewInvitation) {
         await adminSupabase
           .from("competition_member_invitations")
@@ -541,15 +573,16 @@ EventNest Team
       return NextResponse.json(
         {
           error:
-            "The invitation could not be sent. Please try again.",
+            "The invitation email could not be sent. Please check the server terminal for the email error.",
         },
-        { status: 500 }
+        { status: 502 }
       );
     }
 
     // --------------------------------------------------
-    // 17. Success
+    // 16. Success
     // --------------------------------------------------
+
     return NextResponse.json(
       {
         success: true,

@@ -16,6 +16,13 @@ export default function CompetitionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // Invitation state
+  const [inviteCompetitionId, setInviteCompetitionId] = useState(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState("");
+  const [inviteError, setInviteError] = useState("");
+
   useEffect(() => {
     loadOrganizerEventAndCompetitions();
   }, []);
@@ -130,6 +137,88 @@ export default function CompetitionsPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // ---------------------------------------------------------
+  // Invite Competition Member
+  // ---------------------------------------------------------
+  async function sendCompetitionMemberInvitation(competitionId) {
+    setInviteError("");
+    setInviteMessage("");
+
+    const email = inviteEmail.trim().toLowerCase();
+
+    if (!email) {
+      setInviteError("Please enter an email address.");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(email)) {
+      setInviteError("Please enter a valid email address.");
+      return;
+    }
+
+    setInviteLoading(true);
+
+    try {
+      const response = await fetch(
+        "/api/competition-member-invitations",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            competitionId,
+            email,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Failed to send invitation."
+        );
+      }
+
+      setInviteMessage(
+        "Invitation sent successfully."
+      );
+
+      setInviteEmail("");
+    } catch (err) {
+      console.error(
+        "Competition member invitation error:",
+        err
+      );
+
+      setInviteError(
+        err.message ||
+          "Something went wrong while sending the invitation."
+      );
+    } finally {
+      setInviteLoading(false);
+    }
+  }
+
+  function openInviteForm(competitionId) {
+    setInviteCompetitionId(competitionId);
+    setInviteEmail("");
+    setInviteMessage("");
+    setInviteError("");
+  }
+
+  function closeInviteForm() {
+    if (inviteLoading) return;
+
+    setInviteCompetitionId(null);
+    setInviteEmail("");
+    setInviteMessage("");
+    setInviteError("");
   }
 
   // ---------------------------------------------------------
@@ -278,7 +367,6 @@ export default function CompetitionsPage() {
                 </div>
               </div>
 
-              {/* View Event */}
               <button
                 onClick={() =>
                   router.push("/organizer/events")
@@ -471,188 +559,293 @@ export default function CompetitionsPage() {
             <div className="grid gap-6 md:grid-cols-2">
 
               {filteredCompetitions.map(
-                (competition) => (
-                  <div
-                    key={competition.id}
-                    className="overflow-hidden rounded-2xl border border-white/10 bg-[#0B1220] shadow-xl shadow-black/10 transition duration-200 hover:border-indigo-400/20 hover:shadow-indigo-950/20"
-                  >
+                (competition) => {
+                  const isCompetitionOwner =
+                    currentUser?.id ===
+                    competition.organizer_id;
 
-                    {/* Poster */}
-                    {competition.poster_url ? (
-                      <div className="h-48 overflow-hidden bg-[#070D18]">
+                  const isInviteOpen =
+                    inviteCompetitionId ===
+                    competition.id;
 
-                        <img
-                          src={competition.poster_url}
-                          alt={competition.name}
-                          className="h-full w-full object-cover transition duration-300 hover:scale-[1.02]"
-                        />
+                  return (
+                    <div
+                      key={competition.id}
+                      className="overflow-hidden rounded-2xl border border-white/10 bg-[#0B1220] shadow-xl shadow-black/10 transition duration-200 hover:border-indigo-400/20 hover:shadow-indigo-950/20"
+                    >
 
-                      </div>
-                    ) : (
-                      <div className="flex h-32 items-center justify-center bg-gradient-to-br from-indigo-950/40 to-purple-950/30">
+                      {/* Poster */}
+                      {competition.poster_url ? (
+                        <div className="h-48 overflow-hidden bg-[#070D18]">
 
-                        <span className="text-5xl">
-                          🏆
-                        </span>
-
-                      </div>
-                    )}
-
-                    <div className="p-6">
-
-                      {/* Title + Status */}
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-
-                        <div className="min-w-0">
-
-                          <h2 className="truncate text-xl font-bold text-white">
-                            {competition.name}
-                          </h2>
-
-                          <p className="mt-1 text-sm font-medium text-indigo-400">
-                            {event?.name}
-                          </p>
+                          <img
+                            src={competition.poster_url}
+                            alt={competition.name}
+                            className="h-full w-full object-cover transition duration-300 hover:scale-[1.02]"
+                          />
 
                         </div>
+                      ) : (
+                        <div className="flex h-32 items-center justify-center bg-gradient-to-br from-indigo-950/40 to-purple-950/30">
 
-                        <span
-                          className={`self-start whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(
-                            competition.status
-                          )}`}
-                        >
-                          {competition.status || "DRAFT"}
-                        </span>
+                          <span className="text-5xl">
+                            🏆
+                          </span>
 
-                      </div>
-
-                      {/* Description */}
-                      {competition.description && (
-                        <p className="mt-4 line-clamp-2 text-sm leading-6 text-slate-400">
-                          {competition.description}
-                        </p>
+                        </div>
                       )}
 
-                      {/* Competition Details */}
-                      <div className="mt-5 space-y-3 text-sm text-slate-400">
+                      <div className="p-6">
 
-                        <div className="flex items-center gap-3">
-                          <span className="w-5 text-center">
-                            📅
+                        {/* Title + Status */}
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+
+                          <div className="min-w-0">
+
+                            <h2 className="truncate text-xl font-bold text-white">
+                              {competition.name}
+                            </h2>
+
+                            <p className="mt-1 text-sm font-medium text-indigo-400">
+                              {event?.name}
+                            </p>
+
+                          </div>
+
+                          <span
+                            className={`self-start whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(
+                              competition.status
+                            )}`}
+                          >
+                            {competition.status || "DRAFT"}
                           </span>
 
-                          <span>
-                            {formatDate(
-                              competition.competition_date
-                            )}
-                          </span>
                         </div>
 
-                        {competition.start_time &&
-                          competition.end_time && (
+                        {/* Description */}
+                        {competition.description && (
+                          <p className="mt-4 line-clamp-2 text-sm leading-6 text-slate-400">
+                            {competition.description}
+                          </p>
+                        )}
+
+                        {/* Competition Details */}
+                        <div className="mt-5 space-y-3 text-sm text-slate-400">
+
+                          <div className="flex items-center gap-3">
+                            <span className="w-5 text-center">
+                              📅
+                            </span>
+
+                            <span>
+                              {formatDate(
+                                competition.competition_date
+                              )}
+                            </span>
+                          </div>
+
+                          {competition.start_time &&
+                            competition.end_time && (
+                              <div className="flex items-center gap-3">
+
+                                <span className="w-5 text-center">
+                                  ⏰
+                                </span>
+
+                                <span>
+                                  {formatTime(
+                                    competition.start_time
+                                  )}
+                                  {" – "}
+                                  {formatTime(
+                                    competition.end_time
+                                  )}
+                                </span>
+
+                              </div>
+                            )}
+
+                          {competition.venue && (
                             <div className="flex items-center gap-3">
 
                               <span className="w-5 text-center">
-                                ⏰
+                                📍
                               </span>
 
-                              <span>
-                                {formatTime(
-                                  competition.start_time
-                                )}
-                                {" – "}
-                                {formatTime(
-                                  competition.end_time
-                                )}
+                              <span className="truncate">
+                                {competition.venue}
                               </span>
 
                             </div>
                           )}
 
-                        {competition.venue && (
                           <div className="flex items-center gap-3">
 
                             <span className="w-5 text-center">
-                              📍
+                              💰
                             </span>
 
-                            <span className="truncate">
-                              {competition.venue}
+                            <span>
+                              Registration Fee:{" "}
+                              <strong className="font-semibold text-slate-200">
+                                {formatFee(
+                                  competition.registration_fee
+                                )}
+                              </strong>
                             </span>
 
                           </div>
-                        )}
 
-                        <div className="flex items-center gap-3">
+                          {competition.capacity !== null &&
+                            competition.capacity !==
+                              undefined && (
+                              <div className="flex items-center gap-3">
 
-                          <span className="w-5 text-center">
-                            💰
-                          </span>
+                                <span className="w-5 text-center">
+                                  👥
+                                </span>
 
-                          <span>
-                            Registration Fee:{" "}
-                            <strong className="font-semibold text-slate-200">
-                              {formatFee(
-                                competition.registration_fee
-                              )}
-                            </strong>
-                          </span>
+                                <span>
+                                  Capacity:{" "}
+                                  {competition.capacity}
+                                </span>
+
+                              </div>
+                            )}
 
                         </div>
 
-                        {competition.capacity !== null &&
-                          competition.capacity !==
-                            undefined && (
-                            <div className="flex items-center gap-3">
+                        {/* =================================================
+                            ACTIONS
+                        ================================================== */}
+                        <div className="mt-6 space-y-3">
 
-                              <span className="w-5 text-center">
-                                👥
-                              </span>
+                          <div className="grid gap-3 sm:grid-cols-2">
 
-                              <span>
-                                Capacity:{" "}
-                                {competition.capacity}
-                              </span>
+                            {/* Manage / View */}
+                            {isCompetitionOwner ? (
+                              <button
+                                onClick={() =>
+                                  router.push(
+                                    `/organizer/competitions/${competition.id}`
+                                  )
+                                }
+                                className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-500"
+                              >
+                                Manage Competition
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() =>
+                                  router.push(
+                                    `/organizer/competitions/${competition.id}`
+                                  )
+                                }
+                                className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm font-medium text-slate-300 transition hover:border-white/20 hover:bg-white/[0.05] hover:text-white"
+                              >
+                                View Competition
+                              </button>
+                            )}
 
-                            </div>
-                          )}
+                            {/* Invite Member */}
+                            {isCompetitionOwner && (
+                              <button
+                                onClick={() => {
+                                  if (isInviteOpen) {
+                                    closeInviteForm();
+                                  } else {
+                                    openInviteForm(
+                                      competition.id
+                                    );
+                                  }
+                                }}
+                                className="w-full rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-4 py-3 text-sm font-semibold text-indigo-300 transition hover:border-indigo-400/50 hover:bg-indigo-500/20 hover:text-white"
+                              >
+                                {isInviteOpen
+                                  ? "Close Invitation"
+                                  : "✉ Invite Competition Member"}
+                              </button>
+                            )}
+
+                          </div>
+
+                          {/* =================================================
+                              INVITATION FORM
+                          ================================================== */}
+                          {isCompetitionOwner &&
+                            isInviteOpen && (
+                              <div className="rounded-2xl border border-indigo-400/20 bg-indigo-500/[0.05] p-4">
+
+                                <div className="mb-4">
+
+                                  <h3 className="text-sm font-semibold text-white">
+                                    Invite Competition Member
+                                  </h3>
+
+                                  <p className="mt-1 text-xs leading-5 text-slate-400">
+                                    Enter the email address of the
+                                    person you want to invite.
+                                  </p>
+
+                                </div>
+
+                                <form
+                                  onSubmit={(e) => {
+                                    e.preventDefault();
+
+                                    sendCompetitionMemberInvitation(
+                                      competition.id
+                                    );
+                                  }}
+                                  className="space-y-3"
+                                >
+
+                                  <input
+                                    type="email"
+                                    value={inviteEmail}
+                                    onChange={(e) =>
+                                      setInviteEmail(
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="member@example.com"
+                                    disabled={inviteLoading}
+                                    className="w-full rounded-xl border border-white/10 bg-[#070D18] px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 transition focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                                  />
+
+                                  <button
+                                    type="submit"
+                                    disabled={inviteLoading}
+                                    className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-700"
+                                  >
+                                    {inviteLoading
+                                      ? "Sending Invitation..."
+                                      : "Send Invitation"}
+                                  </button>
+
+                                </form>
+
+                                {inviteMessage && (
+                                  <div className="mt-3 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-300">
+                                    {inviteMessage}
+                                  </div>
+                                )}
+
+                                {inviteError && (
+                                  <div className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">
+                                    {inviteError}
+                                  </div>
+                                )}
+
+                              </div>
+                            )}
+
+                        </div>
 
                       </div>
-
-                      {/* =================================================
-                          ACTION
-                      ================================================== */}
-                      <div className="mt-6">
-
-                        {currentUser?.id ===
-                        competition.organizer_id ? (
-                          <button
-                            onClick={() =>
-                              router.push(
-                                `/organizer/competitions/${competition.id}`
-                              )
-                            }
-                            className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-500"
-                          >
-                            Manage Competition
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() =>
-                              router.push(
-                                `/organizer/competitions/${competition.id}`
-                              )
-                            }
-                            className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm font-medium text-slate-300 transition hover:border-white/20 hover:bg-white/[0.05] hover:text-white"
-                          >
-                            View Competition
-                          </button>
-                        )}
-
-                      </div>
-
                     </div>
-                  </div>
-                )
+                  );
+                }
               )}
 
             </div>
