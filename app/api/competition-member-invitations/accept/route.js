@@ -3,20 +3,25 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 function getAdminClient() {
-  return createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Supabase server environment variables are missing.");
+  }
+
+  return createAdminClient(supabaseUrl, serviceRoleKey);
 }
 
 // ---------------------------------------------------------
 // GET
-// Used by the invitation page to check invitation details
+// Used by the invitation page.
+// DOES NOT require the invited user to be logged in.
 // ---------------------------------------------------------
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const token = searchParams.get("token");
+    const token = searchParams.get("token")?.trim();
 
     if (!token) {
       return NextResponse.json(
@@ -27,49 +32,56 @@ export async function GET(request) {
 
     const supabase = getAdminClient();
 
-    const { data: invitation, error } = await supabase
+    // -----------------------------------------------------
+    // 1. Get invitation
+    // -----------------------------------------------------
+    const {
+      data: invitation,
+      error: invitationError,
+    } = await supabase
       .from("competition_member_invitations")
       .select(`
         id,
+        competition_id,
         email,
         status,
         token,
         expires_at,
-        created_at,
-        competition:competitions (
-          id,
-          name,
-          description,
-          registration_fee,
-          status,
-          event:events (
-            id,
-            name,
-            start_date,
-            end_date,
-            venue
-          )
-        )
+        created_at
       `)
       .eq("token", token)
       .maybeSingle();
 
-    if (error) {
-      console.error("Invitation lookup error:", error);
+    if (invitationError) {
+      console.error(
+        "Competition member invitation lookup error:",
+        invitationError
+      );
 
       return NextResponse.json(
-        { error: "Unable to load invitation." },
+        {
+          error: "Unable to load invitation.",
+          details: invitationError.message,
+        },
         { status: 500 }
       );
     }
 
     if (!invitation) {
+      console.error(
+        "Competition member invitation not found for token:",
+        token
+      );
+
       return NextResponse.json(
         { error: "Invitation not found." },
         { status: 404 }
       );
     }
 
+    // -----------------------------------------------------
+    // 2. Check invitation status
+    // -----------------------------------------------------
     if (invitation.status !== "PENDING") {
       return NextResponse.json(
         {
@@ -79,11 +91,23 @@ export async function GET(request) {
       );
     }
 
+    // -----------------------------------------------------
+    // 3. Check expiry
+    // -----------------------------------------------------
     if (new Date(invitation.expires_at) < new Date()) {
-      await supabase
+      const { error: expiryError } = await supabase
         .from("competition_member_invitations")
-        .update({ status: "EXPIRED" })
+        .update({
+          status: "EXPIRED",
+        })
         .eq("id", invitation.id);
+
+      if (expiryError) {
+        console.error(
+          "Failed to mark invitation as expired:",
+          expiryError
+        );
+      }
 
       return NextResponse.json(
         { error: "This invitation has expired." },
@@ -91,14 +115,110 @@ export async function GET(request) {
       );
     }
 
+    // -----------------------------------------------------
+    // 4. Get competition
+    // -----------------------------------------------------
+    const {
+      data: competition,
+      error: competitionError,
+    } = await supabase
+      .from("competitions")
+      .select(`
+        id,
+        name,
+        description,
+        registration_fee,
+        status,
+        event_id
+      `)
+      .eq("id", invitation.competition_id)
+      .maybeSingle();
+
+    if (competitionError) {
+      console.error(
+        "Competition lookup error:",
+        competitionError
+      );
+
+      return NextResponse.json(
+        {
+          error: "Unable to load competition.",
+          details: competitionError.message,
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!competition) {
+      return NextResponse.json(
+        { error: "Competition not found." },
+        { status: 404 }
+      );
+    }
+
+    // -----------------------------------------------------
+    // 5. Get event
+    // -----------------------------------------------------
+    const {
+      data: event,
+      error: eventError,
+    } = await supabase
+      .from("events")
+      .select(`
+        id,
+        name,
+        start_date,
+        end_date,
+        venue
+      `)
+      .eq("id", competition.event_id)
+      .maybeSingle();
+
+    if (eventError) {
+      console.error(
+        "Event lookup error:",
+        eventError
+      );
+
+      return NextResponse.json(
+        {
+          error: "Unable to load event.",
+          details: eventError.message,
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!event) {
+      return NextResponse.json(
+        { error: "Event not found." },
+        { status: 404 }
+      );
+    }
+
+    // -----------------------------------------------------
+    // 6. Return complete invitation
+    // -----------------------------------------------------
     return NextResponse.json({
-      invitation,
+      invitation: {
+        ...invitation,
+        competition: {
+          ...competition,
+          event,
+        },
+      },
     });
   } catch (error) {
-    console.error("GET invitation error:", error);
+    console.error(
+      "GET competition member invitation error:",
+      error
+    );
 
     return NextResponse.json(
-      { error: "Something went wrong." },
+      {
+        error: "Something went wrong.",
+        details: error?.message || "Unknown server error.",
+      },
       { status: 500 }
     );
   }
@@ -106,11 +226,14 @@ export async function GET(request) {
 
 // ---------------------------------------------------------
 // POST
-// Accept competition member invitation
+// Accept competition member invitation.
+// User MUST be logged in here.
 // ---------------------------------------------------------
 export async function POST(request) {
   try {
-    // Get currently logged-in user from normal Supabase client
+    // -----------------------------------------------------
+    // 1. Get logged-in user
+    // -----------------------------------------------------
     const authSupabase = await createClient();
 
     const {
@@ -127,8 +250,11 @@ export async function POST(request) {
       );
     }
 
+    // -----------------------------------------------------
+    // 2. Read token
+    // -----------------------------------------------------
     const body = await request.json();
-    const token = body?.token;
+    const token = body?.token?.trim();
 
     if (!token) {
       return NextResponse.json(
@@ -140,9 +266,12 @@ export async function POST(request) {
     const supabase = getAdminClient();
 
     // -----------------------------------------------------
-    // Find invitation
+    // 3. Find invitation
     // -----------------------------------------------------
-    const { data: invitation, error: invitationError } = await supabase
+    const {
+      data: invitation,
+      error: invitationError,
+    } = await supabase
       .from("competition_member_invitations")
       .select(`
         id,
@@ -156,7 +285,10 @@ export async function POST(request) {
       .maybeSingle();
 
     if (invitationError) {
-      console.error("Invitation fetch error:", invitationError);
+      console.error(
+        "Invitation fetch error:",
+        invitationError
+      );
 
       return NextResponse.json(
         { error: "Unable to process invitation." },
@@ -172,7 +304,7 @@ export async function POST(request) {
     }
 
     // -----------------------------------------------------
-    // Check invitation status
+    // 4. Check status
     // -----------------------------------------------------
     if (invitation.status !== "PENDING") {
       return NextResponse.json(
@@ -184,7 +316,7 @@ export async function POST(request) {
     }
 
     // -----------------------------------------------------
-    // Check expiry
+    // 5. Check expiry
     // -----------------------------------------------------
     if (new Date(invitation.expires_at) < new Date()) {
       await supabase
@@ -201,10 +333,15 @@ export async function POST(request) {
     }
 
     // -----------------------------------------------------
-    // Check invited email matches logged-in account
+    // 6. Check invited email
     // -----------------------------------------------------
-    const invitedEmail = invitation.email?.trim().toLowerCase();
-    const userEmail = user.email?.trim().toLowerCase();
+    const invitedEmail = invitation.email
+      ?.trim()
+      .toLowerCase();
+
+    const userEmail = user.email
+      ?.trim()
+      .toLowerCase();
 
     if (!userEmail || invitedEmail !== userEmail) {
       return NextResponse.json(
@@ -217,16 +354,22 @@ export async function POST(request) {
     }
 
     // -----------------------------------------------------
-    // Get user profile
+    // 7. Get profile
     // -----------------------------------------------------
-    const { data: profile, error: profileError } = await supabase
+    const {
+      data: profile,
+      error: profileError,
+    } = await supabase
       .from("profiles")
       .select("id, role")
       .eq("id", user.id)
       .maybeSingle();
 
     if (profileError) {
-      console.error("Profile fetch error:", profileError);
+      console.error(
+        "Profile fetch error:",
+        profileError
+      );
 
       return NextResponse.json(
         { error: "Unable to load your profile." },
@@ -245,15 +388,17 @@ export async function POST(request) {
     }
 
     // -----------------------------------------------------
-    // Check whether already a member
+    // 8. Check existing membership
     // -----------------------------------------------------
-    const { data: existingMembership, error: membershipCheckError } =
-      await supabase
-        .from("competition_members")
-        .select("id")
-        .eq("competition_id", invitation.competition_id)
-        .eq("member_id", user.id)
-        .maybeSingle();
+    const {
+      data: existingMembership,
+      error: membershipCheckError,
+    } = await supabase
+      .from("competition_members")
+      .select("id")
+      .eq("competition_id", invitation.competition_id)
+      .eq("member_id", user.id)
+      .maybeSingle();
 
     if (membershipCheckError) {
       console.error(
@@ -268,16 +413,17 @@ export async function POST(request) {
     }
 
     // -----------------------------------------------------
-    // Already member
+    // 9. Already a member
     // -----------------------------------------------------
     if (existingMembership) {
-      const { error: alreadyAcceptedError } = await supabase
-        .from("competition_member_invitations")
-        .update({
-          status: "ACCEPTED",
-          accepted_at: new Date().toISOString(),
-        })
-        .eq("id", invitation.id);
+      const { error: alreadyAcceptedError } =
+        await supabase
+          .from("competition_member_invitations")
+          .update({
+            status: "ACCEPTED",
+            accepted_at: new Date().toISOString(),
+          })
+          .eq("id", invitation.id);
 
       if (alreadyAcceptedError) {
         console.error(
@@ -289,27 +435,29 @@ export async function POST(request) {
       return NextResponse.json({
         success: true,
         alreadyMember: true,
-        message: "You are already a member of this competition.",
+        message:
+          "You are already a member of this competition.",
         competitionId: invitation.competition_id,
       });
     }
 
     // -----------------------------------------------------
-    // Create competition membership
+    // 10. Create membership
     // -----------------------------------------------------
-    const { data: membership, error: membershipError } =
-      await supabase
-        .from("competition_members")
-        .insert({
-          competition_id: invitation.competition_id,
-          member_id: user.id,
-        })
-        .select("id")
-        .single();
+    const {
+      data: membership,
+      error: membershipError,
+    } = await supabase
+      .from("competition_members")
+      .insert({
+        competition_id: invitation.competition_id,
+        member_id: user.id,
+      })
+      .select("id")
+      .single();
 
     if (membershipError) {
-      // Unique constraint means membership may have been
-      // created by another request at the same time.
+      // Duplicate membership
       if (membershipError.code === "23505") {
         await supabase
           .from("competition_member_invitations")
@@ -322,7 +470,8 @@ export async function POST(request) {
         return NextResponse.json({
           success: true,
           alreadyMember: true,
-          message: "You are already a member of this competition.",
+          message:
+            "You are already a member of this competition.",
           competitionId: invitation.competition_id,
         });
       }
@@ -334,15 +483,15 @@ export async function POST(request) {
 
       return NextResponse.json(
         {
-          error: "Unable to add you as a competition member.",
+          error:
+            "Unable to add you as a competition member.",
         },
         { status: 500 }
       );
     }
 
     // -----------------------------------------------------
-    // Update profile role
-    //
+    // 11. Update profile role
     // Do NOT downgrade ADMIN or ORGANIZER.
     // -----------------------------------------------------
     if (
@@ -357,9 +506,11 @@ export async function POST(request) {
         .eq("id", user.id);
 
       if (roleError) {
-        console.error("Role update error:", roleError);
+        console.error(
+          "Role update error:",
+          roleError
+        );
 
-        // Roll back membership if role update fails.
         await supabase
           .from("competition_members")
           .delete()
@@ -376,9 +527,11 @@ export async function POST(request) {
     }
 
     // -----------------------------------------------------
-    // Mark invitation as accepted
+    // 12. Mark invitation accepted
     // -----------------------------------------------------
-    const { error: acceptError } = await supabase
+    const {
+      error: acceptError,
+    } = await supabase
       .from("competition_member_invitations")
       .update({
         status: "ACCEPTED",
@@ -392,8 +545,6 @@ export async function POST(request) {
         acceptError
       );
 
-      // Roll back membership because invitation state
-      // could not be completed.
       await supabase
         .from("competition_members")
         .delete()
@@ -409,18 +560,25 @@ export async function POST(request) {
     }
 
     // -----------------------------------------------------
-    // Success
+    // 13. Success
     // -----------------------------------------------------
     return NextResponse.json({
       success: true,
-      message: "Competition member invitation accepted successfully.",
+      message:
+        "Competition member invitation accepted successfully.",
       competitionId: invitation.competition_id,
     });
   } catch (error) {
-    console.error("POST invitation acceptance error:", error);
+    console.error(
+      "POST invitation acceptance error:",
+      error
+    );
 
     return NextResponse.json(
-      { error: "Something went wrong while accepting the invitation." },
+      {
+        error:
+          "Something went wrong while accepting the invitation.",
+      },
       { status: 500 }
     );
   }
