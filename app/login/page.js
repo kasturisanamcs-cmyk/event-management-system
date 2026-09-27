@@ -91,9 +91,7 @@ export default function LoginPage() {
           setErrorMessage(
             "No account found with these login details, or the password is incorrect. Please check your details or create an account."
           );
-        } else if (
-          message.includes("email not confirmed")
-        ) {
+        } else if (message.includes("email not confirmed")) {
           setErrorMessage(
             "Please verify your email address before signing in."
           );
@@ -132,10 +130,7 @@ export default function LoginPage() {
         .single();
 
       if (profileError) {
-        console.error(
-          "PROFILE ERROR:",
-          profileError
-        );
+        console.error("PROFILE ERROR:", profileError);
 
         await supabase.auth.signOut();
 
@@ -160,9 +155,7 @@ export default function LoginPage() {
         return;
       }
 
-      const role = profile.role
-        .trim()
-        .toUpperCase();
+      const role = profile.role.trim().toUpperCase();
 
       const allowedRoles = [
         "ADMIN",
@@ -173,10 +166,7 @@ export default function LoginPage() {
       ];
 
       if (!allowedRoles.includes(role)) {
-        console.error(
-          "UNKNOWN ROLE:",
-          profile.role
-        );
+        console.error("UNKNOWN ROLE:", profile.role);
 
         await supabase.auth.signOut();
 
@@ -191,53 +181,58 @@ export default function LoginPage() {
       // COMPLETE PENDING INVITATION
       // =================================================
 
-      const pendingInvitationRaw =
-        localStorage.getItem(
-          "eventnest_pending_invitation"
-        );
+      const pendingInvitationRaw = localStorage.getItem(
+        "eventnest_pending_invitation"
+      );
 
       if (pendingInvitationRaw) {
         try {
-          const pendingInvitation =
-            JSON.parse(
-              pendingInvitationRaw
-            );
+          const pendingInvitation = JSON.parse(
+            pendingInvitationRaw
+          );
 
           const invitationToken =
-            pendingInvitation?.token;
+            typeof pendingInvitation?.token === "string"
+              ? pendingInvitation.token.trim()
+              : "";
 
           const invitationType =
-            pendingInvitation?.type;
+            typeof pendingInvitation?.type === "string"
+              ? pendingInvitation.type.trim()
+              : "";
 
-          if (
-            invitationToken &&
-            invitationType
-          ) {
+          // -------------------------------------------------
+          // INVALID LOCAL STORAGE DATA
+          // -------------------------------------------------
+
+          if (!invitationToken || !invitationType) {
+            console.warn(
+              "Invalid pending invitation data found. Removing it."
+            );
+
+            localStorage.removeItem(
+              "eventnest_pending_invitation"
+            );
+          } else {
             let invitationEndpoint = null;
             let dashboardPath = null;
 
-            // -------------------------------------------
-            // ORGANIZER
-            // -------------------------------------------
+            // -----------------------------------------------
+            // ORGANIZER INVITATION
+            // -----------------------------------------------
 
-            if (
-              invitationType === "organizer"
-            ) {
+            if (invitationType === "organizer") {
               invitationEndpoint =
                 "/api/organizer-invitations/accept";
 
-              dashboardPath =
-                "/organizer/dashboard";
+              dashboardPath = "/organizer/dashboard";
             }
 
-            // -------------------------------------------
-            // COMPETITION MEMBER
-            // -------------------------------------------
+            // -----------------------------------------------
+            // COMPETITION MEMBER INVITATION
+            // -----------------------------------------------
 
-            if (
-              invitationType ===
-              "competition-member"
-            ) {
+            if (invitationType === "competition-member") {
               invitationEndpoint =
                 "/api/competition-member-invitations/accept";
 
@@ -245,56 +240,82 @@ export default function LoginPage() {
                 "/competition-member/dashboard";
             }
 
-            // -------------------------------------------
-            // ACCEPT INVITATION
-            // -------------------------------------------
+            // -----------------------------------------------
+            // UNKNOWN INVITATION TYPE
+            // -----------------------------------------------
 
-            if (
-              invitationEndpoint &&
-              dashboardPath
-            ) {
+            if (!invitationEndpoint || !dashboardPath) {
+              console.warn(
+                "Unknown invitation type. Removing pending invitation."
+              );
+
+              localStorage.removeItem(
+                "eventnest_pending_invitation"
+              );
+            } else {
+              // ---------------------------------------------
+              // ACCEPT INVITATION
+              // ---------------------------------------------
+
               setSuccessMessage(
                 "Login successful! Completing your invitation..."
               );
 
-              const invitationResponse =
-                await fetch(
-                  invitationEndpoint,
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type":
-                        "application/json",
-                    },
-                    body: JSON.stringify({
-                      token:
-                        invitationToken,
-                    }),
-                  }
+              const invitationResponse = await fetch(
+                invitationEndpoint,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    token: invitationToken,
+                  }),
+                }
+              );
+
+              let invitationData = {};
+
+              try {
+                invitationData =
+                  await invitationResponse.json();
+              } catch (jsonError) {
+                console.error(
+                  "Could not read invitation response:",
+                  jsonError
                 );
+              }
 
-              const invitationData =
-                await invitationResponse.json();
+              // ---------------------------------------------
+              // INVITATION FAILED
+              // ---------------------------------------------
 
-              if (
-                !invitationResponse.ok
-              ) {
+              if (!invitationResponse.ok) {
                 console.error(
                   "Pending invitation error:",
                   invitationData
                 );
 
+                // IMPORTANT:
+                // Remove the stale/invalid invitation so
+                // the browser does not retry it on every login.
+                localStorage.removeItem(
+                  "eventnest_pending_invitation"
+                );
+
+                setSuccessMessage("");
+
                 setErrorMessage(
                   invitationData?.error ||
-                    "Your invitation could not be completed."
+                    "Your invitation could not be completed. Please request a new invitation if necessary."
                 );
 
                 return;
               }
 
-              // -----------------------------------------
+              // ---------------------------------------------
               // INVITATION COMPLETED
-              // -----------------------------------------
+              // ---------------------------------------------
 
               localStorage.removeItem(
                 "eventnest_pending_invitation"
@@ -305,10 +326,7 @@ export default function LoginPage() {
               );
 
               setTimeout(() => {
-                router.push(
-                  dashboardPath
-                );
-
+                router.push(dashboardPath);
                 router.refresh();
               }, 500);
 
@@ -321,9 +339,20 @@ export default function LoginPage() {
             error
           );
 
+          // IMPORTANT:
+          // Remove corrupted invitation data so it cannot
+          // keep breaking future logins.
           localStorage.removeItem(
             "eventnest_pending_invitation"
           );
+
+          setSuccessMessage("");
+
+          setErrorMessage(
+            "Your login was successful, but the pending invitation could not be processed. Please request a new invitation if necessary."
+          );
+
+          return;
         }
       }
 
@@ -337,15 +366,11 @@ export default function LoginPage() {
 
       switch (role) {
         case "ADMIN":
-          router.push(
-            "/admin/dashboard"
-          );
+          router.push("/admin/dashboard");
           break;
 
         case "ORGANIZER":
-          router.push(
-            "/organizer/dashboard"
-          );
+          router.push("/organizer/dashboard");
           break;
 
         case "COMPETITION_MEMBER":
@@ -355,15 +380,11 @@ export default function LoginPage() {
           break;
 
         case "VOLUNTEER":
-          router.push(
-            "/volunteer/dashboard"
-          );
+          router.push("/volunteer/dashboard");
           break;
 
         case "PARTICIPANT":
-          router.push(
-            "/participant/dashboard"
-          );
+          router.push("/participant/dashboard");
           break;
 
         default:
@@ -440,7 +461,6 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen bg-[#020817] text-white">
-
       <div className="grid min-h-screen lg:grid-cols-2">
 
         {/* =================================================
