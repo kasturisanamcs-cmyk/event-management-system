@@ -12,16 +12,12 @@ function getAdminClient() {
     throw new Error("Supabase server configuration is missing.");
   }
 
-  return createSupabaseClient(
-    supabaseUrl,
-    serviceRoleKey,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    }
-  );
+  return createSupabaseClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 }
 
 // ============================================================
@@ -124,10 +120,7 @@ export async function GET(request) {
         .maybeSingle();
 
     if (competitionError) {
-      console.error(
-        "Competition lookup error:",
-        competitionError
-      );
+      console.error("Competition lookup error:", competitionError);
 
       return NextResponse.json(
         {
@@ -140,7 +133,8 @@ export async function GET(request) {
     if (!competition) {
       return NextResponse.json(
         {
-          error: "The competition associated with this invitation was not found.",
+          error:
+            "The competition associated with this invitation was not found.",
         },
         { status: 404 }
       );
@@ -150,18 +144,14 @@ export async function GET(request) {
     // 5. Get event
     // --------------------------------------------------
 
-    const { data: event, error: eventError } =
-      await supabaseAdmin
-        .from("events")
-        .select("*")
-        .eq("id", competition.event_id)
-        .maybeSingle();
+    const { data: event, error: eventError } = await supabaseAdmin
+      .from("events")
+      .select("*")
+      .eq("id", competition.event_id)
+      .maybeSingle();
 
     if (eventError) {
-      console.error(
-        "Event lookup error:",
-        eventError
-      );
+      console.error("Event lookup error:", eventError);
 
       return NextResponse.json(
         {
@@ -174,7 +164,8 @@ export async function GET(request) {
     if (!event) {
       return NextResponse.json(
         {
-          error: "The event associated with this competition was not found.",
+          error:
+            "The event associated with this competition was not found.",
         },
         { status: 404 }
       );
@@ -186,12 +177,14 @@ export async function GET(request) {
 
     return NextResponse.json({
       success: true,
+
       invitation: {
         id: invitation.id,
         email: invitation.email,
         status: invitation.status,
         expires_at: invitation.expires_at,
       },
+
       competition: {
         id: competition.id,
         name: competition.name,
@@ -205,6 +198,7 @@ export async function GET(request) {
         status: competition.status,
         poster_url: competition.poster_url,
       },
+
       event: {
         id: event.id,
         name: event.name,
@@ -215,10 +209,7 @@ export async function GET(request) {
       },
     });
   } catch (error) {
-    console.error(
-      "Competition member invitation GET error:",
-      error
-    );
+    console.error("Competition member invitation GET error:", error);
 
     return NextResponse.json(
       {
@@ -278,13 +269,10 @@ export async function POST(request) {
     // 3. Create Supabase admin client
     // --------------------------------------------------
 
-    const serviceRoleKey =
-      process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!serviceRoleKey) {
-      console.error(
-        "SUPABASE_SERVICE_ROLE_KEY is missing."
-      );
+      console.error("SUPABASE_SERVICE_ROLE_KEY is missing.");
 
       return NextResponse.json(
         {
@@ -319,10 +307,7 @@ export async function POST(request) {
       .maybeSingle();
 
     if (invitationError) {
-      console.error(
-        "Invitation lookup error:",
-        invitationError
-      );
+      console.error("Invitation lookup error:", invitationError);
 
       return NextResponse.json(
         {
@@ -358,10 +343,7 @@ export async function POST(request) {
     // 6. Check invitation expiry
     // --------------------------------------------------
 
-    if (
-      new Date(invitation.expires_at) <
-      new Date()
-    ) {
+    if (new Date(invitation.expires_at) < new Date()) {
       await supabaseAdmin
         .from("competition_member_invitations")
         .update({
@@ -383,8 +365,7 @@ export async function POST(request) {
 
     if (
       user.email &&
-      invitation.email.toLowerCase() !==
-        user.email.toLowerCase()
+      invitation.email.toLowerCase() !== user.email.toLowerCase()
     ) {
       return NextResponse.json(
         {
@@ -417,6 +398,9 @@ export async function POST(request) {
       return NextResponse.json(
         {
           error: "Could not verify your profile.",
+          details: profileFetchError.message,
+          code: profileFetchError.code,
+          hint: profileFetchError.hint,
         },
         { status: 500 }
       );
@@ -431,16 +415,12 @@ export async function POST(request) {
       );
     }
 
-    // Same idea as the organizer invitation flow:
-    // normal participant account becomes the invited role.
-
+    // Normal participant account becomes competition member.
     if (
       profile.role === "PARTICIPANT" ||
       profile.role === "COMPETITION_MEMBER"
     ) {
-      const {
-        error: roleError,
-      } = await supabaseAdmin
+      const { error: roleError } = await supabaseAdmin
         .from("profiles")
         .update({
           role: "COMPETITION_MEMBER",
@@ -456,6 +436,9 @@ export async function POST(request) {
         return NextResponse.json(
           {
             error: "Could not update your profile.",
+            details: roleError.message,
+            code: roleError.code,
+            hint: roleError.hint,
           },
           { status: 500 }
         );
@@ -492,6 +475,9 @@ export async function POST(request) {
         {
           error:
             "Could not connect you to the competition.",
+          details: membershipError.message,
+          code: membershipError.code,
+          hint: membershipError.hint,
         },
         { status: 500 }
       );
@@ -501,9 +487,7 @@ export async function POST(request) {
     // 10. Mark invitation as accepted
     // --------------------------------------------------
 
-    const {
-      error: updateError,
-    } = await supabaseAdmin
+    const { error: updateError } = await supabaseAdmin
       .from("competition_member_invitations")
       .update({
         status: "ACCEPTED",
@@ -521,6 +505,9 @@ export async function POST(request) {
         {
           error:
             "Could not complete the invitation.",
+          details: updateError.message,
+          code: updateError.code,
+          hint: updateError.hint,
         },
         { status: 500 }
       );
@@ -546,6 +533,7 @@ export async function POST(request) {
     return NextResponse.json(
       {
         error:
+          error?.message ||
           "Something went wrong while accepting the invitation.",
       },
       { status: 500 }
