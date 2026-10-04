@@ -1,11 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function EventDetailsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#020617] text-white flex items-center justify-center">
+          <div className="text-center">
+            <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-white/10 border-t-blue-500" />
+            <p className="mt-4 text-sm text-slate-400">
+              Loading event details...
+            </p>
+          </div>
+        </div>
+      }
+    >
+      <EventDetailsContent />
+    </Suspense>
+  );
+}
+
+function EventDetailsContent() {
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -35,7 +54,6 @@ export default function EventDetailsPage() {
       setError("");
       setCompetitionError("");
 
-      // Check logged-in user
       const {
         data: { user },
         error: userError,
@@ -51,7 +69,6 @@ export default function EventDetailsPage() {
         return;
       }
 
-      // Get participant profile
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("full_name")
@@ -66,23 +83,20 @@ export default function EventDetailsPage() {
         setUserName(profile.full_name);
       }
 
-      // Load published event
       const { data: eventData, error: eventError } = await supabase
         .from("events")
-        .select(
-          `
-            id,
-            name,
-            description,
-            start_date,
-            end_date,
-            registration_deadline,
-            venue,
-            event_image,
-            status,
-            created_at
-          `
-        )
+        .select(`
+          id,
+          name,
+          description,
+          start_date,
+          end_date,
+          registration_deadline,
+          venue,
+          event_image,
+          status,
+          created_at
+        `)
         .eq("id", eventId)
         .eq("status", "PUBLISHED")
         .maybeSingle();
@@ -102,35 +116,35 @@ export default function EventDetailsPage() {
 
       setEvent(eventData);
 
-      // Load published competitions belonging to this event
       const { data: competitionData, error: competitionsError } =
         await supabase
           .from("competitions")
-          .select(
-            `
-              id,
-              name,
-              description,
-              rules,
-              registration_fee,
-              capacity,
-              competition_date,
-              start_time,
-              end_time,
-              check_in_start,
-              check_in_end,
-              late_entry_allowed,
-              venue,
-              status,
-              poster_url
-            `
-          )
+          .select(`
+            id,
+            name,
+            description,
+            rules,
+            registration_fee,
+            capacity,
+            competition_date,
+            start_time,
+            end_time,
+            check_in_start,
+            check_in_end,
+            late_entry_allowed,
+            venue,
+            status,
+            poster_url
+          `)
           .eq("event_id", eventId)
           .eq("status", "PUBLISHED")
           .order("competition_date", { ascending: true });
 
       if (competitionsError) {
-        console.error("Competition loading error:", competitionsError);
+        console.error(
+          "Competition loading error:",
+          competitionsError
+        );
         setCompetitionError(competitionsError.message);
         setCompetitions([]);
       } else {
@@ -329,16 +343,13 @@ export default function EventDetailsPage() {
 
   return (
     <div className="min-h-screen bg-[#020617] text-white">
-      {/* Sidebar */}
       <ParticipantSidebar
         active="events"
         userName={userName}
         logout={logout}
       />
 
-      {/* Main */}
       <main className="min-h-screen lg:ml-64">
-        {/* Header */}
         <header className="border-b border-white/10 px-4 py-6 sm:px-6 lg:px-8">
           <p className="text-sm text-blue-400">Participant</p>
 
@@ -358,7 +369,6 @@ export default function EventDetailsPage() {
         </header>
 
         <section className="px-4 py-6 sm:px-6 lg:px-8">
-          {/* Back */}
           <Link
             href="/participant/events"
             className="mb-6 inline-flex items-center text-sm text-slate-400 transition hover:text-white"
@@ -366,9 +376,7 @@ export default function EventDetailsPage() {
             ← Back to Events
           </Link>
 
-          {/* Event Hero */}
           <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#0f172a]">
-            {/* Event Image */}
             <div className="relative h-64 bg-slate-900 sm:h-80 lg:h-96">
               {event.event_image ? (
                 <img
@@ -393,7 +401,6 @@ export default function EventDetailsPage() {
               </div>
             </div>
 
-            {/* Event Details */}
             <div className="p-5 sm:p-8">
               <p className="text-sm font-medium text-blue-400">
                 EVENT
@@ -408,7 +415,6 @@ export default function EventDetailsPage() {
                   "No description has been provided for this event."}
               </p>
 
-              {/* Event Info */}
               <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <InfoCard
                   icon="📅"
@@ -444,7 +450,6 @@ export default function EventDetailsPage() {
             </div>
           </section>
 
-          {/* Competitions */}
           <section className="mt-8">
             <div className="mb-5">
               <p className="text-sm font-medium text-blue-400">
@@ -461,7 +466,6 @@ export default function EventDetailsPage() {
               </p>
             </div>
 
-            {/* Competition Error */}
             {competitionError && (
               <div className="mb-6 rounded-2xl border border-red-500/20 bg-red-500/10 p-5">
                 <h3 className="font-semibold text-red-400">
@@ -474,7 +478,6 @@ export default function EventDetailsPage() {
               </div>
             )}
 
-            {/* No Competitions */}
             {!competitionError && competitions.length === 0 && (
               <div className="rounded-2xl border border-white/10 bg-[#0f172a] p-10 text-center">
                 <div className="text-5xl">🏆</div>
@@ -490,7 +493,6 @@ export default function EventDetailsPage() {
               </div>
             )}
 
-            {/* Competition Cards */}
             {!competitionError && competitions.length > 0 && (
               <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
                 {competitions.map((competition) => {
@@ -503,7 +505,6 @@ export default function EventDetailsPage() {
                       key={competition.id}
                       className="overflow-hidden rounded-2xl border border-white/10 bg-[#0f172a] transition hover:-translate-y-1 hover:border-blue-500/40"
                     >
-                      {/* Poster */}
                       <div className="h-44 bg-slate-900">
                         {competition.poster_url ? (
                           <img
@@ -526,7 +527,6 @@ export default function EventDetailsPage() {
                         )}
                       </div>
 
-                      {/* Competition Details */}
                       <div className="p-5">
                         <div className="mb-3 inline-flex rounded-full bg-green-500/10 px-3 py-1 text-xs text-green-400">
                           Published
@@ -541,7 +541,6 @@ export default function EventDetailsPage() {
                             "No description available."}
                         </p>
 
-                        {/* Schedule */}
                         <div className="mt-5 space-y-3 border-t border-white/10 pt-4">
                           <div className="flex gap-3">
                             <span>📅</span>
@@ -610,7 +609,6 @@ export default function EventDetailsPage() {
                             )}
                         </div>
 
-                        {/* Rules Preview */}
                         {rules.length > 0 && (
                           <div className="mt-5 border-t border-white/10 pt-4">
                             <p className="text-xs text-slate-500">
@@ -643,17 +641,15 @@ export default function EventDetailsPage() {
                           </div>
                         )}
 
-                        {/* Registration Notice */}
-                        {/* Registration */}
-                      <div className="mt-5">
-                      <Link
-                        href={`/participant/events/details/competition/${competition.id}`}
-                        className="flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-blue-500 hover:shadow-lg hover:shadow-blue-600/20"
-                      >
-                        View Details →
-                      </Link>
-                    </div>
-                                            </div>
+                        <div className="mt-5">
+                          <Link
+                            href={`/participant/events/details/competition/${competition.id}`}
+                            className="flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-blue-500 hover:shadow-lg hover:shadow-blue-600/20"
+                          >
+                            View Details →
+                          </Link>
+                        </div>
+                      </div>
                     </article>
                   );
                 })}
@@ -661,7 +657,6 @@ export default function EventDetailsPage() {
             )}
           </section>
 
-          {/* Event Summary */}
           <section className="mt-8 rounded-2xl border border-white/10 bg-[#0f172a] p-5 sm:p-6">
             <h2 className="text-xl font-bold">
               About This Event
@@ -678,10 +673,6 @@ export default function EventDetailsPage() {
   );
 }
 
-/* =========================================================
-   Participant Sidebar
-========================================================= */
-
 function ParticipantSidebar({
   active,
   userName,
@@ -690,7 +681,6 @@ function ParticipantSidebar({
   return (
     <aside className="fixed left-0 top-0 hidden h-screen w-64 border-r border-white/10 bg-[#0f172a] lg:block">
       <div className="flex h-full flex-col">
-        {/* Logo */}
         <div className="border-b border-white/10 px-6 py-5">
           <Link
             href="/"
@@ -704,7 +694,6 @@ function ParticipantSidebar({
           </p>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 space-y-2 px-4 py-6">
           <SidebarLink
             href="/participant/dashboard"
@@ -756,7 +745,6 @@ function ParticipantSidebar({
           />
         </nav>
 
-        {/* Logout */}
         <div className="border-t border-white/10 p-4">
           <button
             onClick={logout}
@@ -769,10 +757,6 @@ function ParticipantSidebar({
     </aside>
   );
 }
-
-/* =========================================================
-   Sidebar Link
-========================================================= */
 
 function SidebarLink({
   href,
@@ -795,10 +779,6 @@ function SidebarLink({
   );
 }
 
-/* =========================================================
-   User Badge
-========================================================= */
-
 function UserBadge({ userName }) {
   return (
     <div className="flex items-center gap-3">
@@ -818,10 +798,6 @@ function UserBadge({ userName }) {
     </div>
   );
 }
-
-/* =========================================================
-   Information Card
-========================================================= */
 
 function InfoCard({
   icon,
