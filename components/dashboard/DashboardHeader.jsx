@@ -23,13 +23,27 @@ export default function DashboardHeader({
     loadUser();
   }, []);
 
-  return (
-    <header className="flex min-h-20 items-center justify-between border-b border-white/10 bg-[#020817] px-4 sm:px-6">
+  const displayName =
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    "EventNest User";
 
-      {/* Left Side */}
+  const email =
+    user?.email || "Loading...";
+
+  const initial =
+    displayName
+      .trim()
+      .charAt(0)
+      .toUpperCase() || "U";
+
+  return (
+    <header className="sticky top-0 z-30 flex min-h-20 items-center justify-between border-b border-white/10 bg-[#020817]/95 px-4 backdrop-blur-xl sm:px-6">
+
+      {/* Left */}
       <div className="flex min-w-0 items-center gap-3">
 
-        {/* Mobile Menu Button */}
+        {/* Mobile menu */}
         <button
           type="button"
           onClick={onMenuClick}
@@ -64,34 +78,26 @@ export default function DashboardHeader({
 
       </div>
 
-
-      {/* Right Side */}
+      {/* Right */}
       <div className="flex shrink-0 items-center gap-3">
 
-        {/* User Information */}
+        {/* User information */}
         <div className="hidden text-right md:block">
-          <p className="text-sm font-medium text-white">
-            {user?.user_metadata?.full_name || "EventNest User"}
+          <p className="max-w-[220px] truncate text-sm font-medium text-white">
+            {displayName}
           </p>
 
           <p className="max-w-[220px] truncate text-xs text-slate-500">
-            {user?.email || "Loading..."}
+            {email}
           </p>
         </div>
 
         {/* Avatar */}
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600/20 font-semibold text-blue-400">
-          {(
-            user?.user_metadata?.full_name ||
-            user?.email ||
-            "U"
-          )
-            .charAt(0)
-            .toUpperCase()}
+        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-blue-500/20 bg-blue-600/20 font-semibold text-blue-400">
+          {initial}
         </div>
 
       </div>
-
     </header>
   );
 }

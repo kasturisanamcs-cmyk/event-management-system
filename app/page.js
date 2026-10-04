@@ -1,76 +1,192 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function Home() {
   const [events, setEvents] = useState([]);
-  const [search, setSearch] = useState("");
   const [loadingEvents, setLoadingEvents] = useState(true);
+
+  const [user, setUser] = useState(null);
+  const [userRole, setUserRole] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  useEffect(() => {
-    loadEvents();
-  }, []);
+  // =====================================================
+  // AUTH
+  // =====================================================
 
-  async function loadEvents() {
+  useEffect(() => {
     const supabase = createClient();
 
-    try {
-      const { data, error } = await supabase
-        .from("events")
-        .select(
-          `
-          id,
-          name,
-          description,
-          start_date,
-          end_date,
-          registration_deadline,
-          venue,
-          event_image,
-          status
-        `
-        )
-        .eq("status", "PUBLISHED")
-        .order("start_date", { ascending: true })
-        .limit(6);
+    async function initializeAuth() {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-      if (error) {
-        console.error("Events loading error:", error);
-        setEvents([]);
-        return;
+        const currentUser = session?.user || null;
+
+        setUser(currentUser);
+
+        if (currentUser) {
+          const { data, error } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", currentUser.id)
+            .maybeSingle();
+
+          if (!error) {
+            setUserRole(data?.role || null);
+          }
+        } else {
+          setUserRole(null);
+        }
+      } catch (error) {
+        console.error("Auth initialization error:", error);
+        setUser(null);
+        setUserRole(null);
+      } finally {
+        setAuthLoading(false);
+      }
+    }
+
+    initializeAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      const currentUser = session?.user || null;
+
+      // IMPORTANT:
+      // Do not await another Supabase request inside this callback.
+      setUser(currentUser);
+
+      if (!currentUser) {
+        setUserRole(null);
       }
 
-      setEvents(data || []);
-    } catch (error) {
-      console.error("Events loading error:", error);
-      setEvents([]);
-    } finally {
-      setLoadingEvents(false);
+      setAuthLoading(false);
+
+      // Load role separately after auth event.
+      if (currentUser) {
+        setTimeout(async () => {
+          try {
+            const { data, error } = await supabase
+              .from("profiles")
+              .select("role")
+              .eq("id", currentUser.id)
+              .maybeSingle();
+
+            if (!error) {
+              setUserRole(data?.role || null);
+            }
+          } catch (error) {
+            console.error("Role loading error:", error);
+          }
+        }, 0);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // =====================================================
+  // DASHBOARD ROUTE
+  // =====================================================
+
+  function getDashboardPath() {
+    switch (userRole) {
+      case "ADMIN":
+        return "/dashboard";
+
+      case "ORGANIZER":
+        return "/dashboard";
+
+      case "COMPETITION_MEMBER":
+        return "/competition-member/dashboard";
+
+      case "PARTICIPANT":
+        return "/participant/dashboard";
+
+      default:
+        return "/dashboard";
     }
   }
 
-  const filteredEvents = useMemo(() => {
-    const query = search.trim().toLowerCase();
+  // =====================================================
+  // LOGOUT
+  // =====================================================
 
-    if (!query) {
-      return events;
+  async function handleLogout() {
+    const supabase = createClient();
+
+    setLoggingOut(true);
+
+    try {
+      await supabase.auth.signOut();
+
+      setUser(null);
+      setUserRole(null);
+      setMobileMenuOpen(false);
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      setLoggingOut(false);
+    }
+  }
+
+  // =====================================================
+  // LOAD EVENTS
+  // =====================================================
+
+  useEffect(() => {
+    async function loadEvents() {
+      const supabase = createClient();
+
+      try {
+        const { data, error } = await supabase
+          .from("events")
+          .select(`
+            id,
+            name,
+            description,
+            start_date,
+            end_date,
+            registration_deadline,
+            venue,
+            event_image,
+            status
+          `)
+          .eq("status", "PUBLISHED")
+          .order("start_date", { ascending: true })
+          .limit(6);
+
+        if (error) {
+          console.error("Events loading error:", error);
+          setEvents([]);
+        } else {
+          setEvents(data || []);
+        }
+      } catch (error) {
+        console.error("Events loading error:", error);
+        setEvents([]);
+      } finally {
+        setLoadingEvents(false);
+      }
     }
 
-    return events.filter((event) => {
-      const name = event.name?.toLowerCase() || "";
-      const description = event.description?.toLowerCase() || "";
-      const venue = event.venue?.toLowerCase() || "";
+    loadEvents();
+  }, []);
 
-      return (
-        name.includes(query) ||
-        description.includes(query) ||
-        venue.includes(query)
-      );
-    });
-  }, [events, search]);
+  // =====================================================
+  // FORMAT DATE
+  // =====================================================
 
   function formatDate(date) {
     if (!date) return "Date unavailable";
@@ -83,21 +199,21 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-[#020817] text-white">
+    <main className="min-h-screen overflow-x-hidden bg-[#020617] text-white">
 
       {/* =====================================================
           NAVBAR
       ====================================================== */}
 
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-[#020817]/95 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-white/10 bg-[#020617]/95 backdrop-blur-xl">
 
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8 lg:px-10">
+        <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
 
           {/* LOGO */}
 
           <Link href="/" className="flex items-center gap-3">
 
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 text-lg font-bold shadow-lg shadow-blue-500/20">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 text-lg font-black shadow-lg shadow-blue-500/20">
               E
             </div>
 
@@ -106,74 +222,95 @@ export default function Home() {
                 EventNest
               </p>
 
-              <p className="hidden text-xs text-slate-500 sm:block">
+              <p className="hidden text-[11px] text-slate-500 sm:block">
                 Discover. Register. Experience.
               </p>
             </div>
 
           </Link>
 
-
-          {/* DESKTOP NAVIGATION */}
+          {/* DESKTOP NAV */}
 
           <nav className="hidden items-center gap-7 md:flex">
 
             <Link
               href="/events"
-              className="text-sm font-medium text-slate-300 transition hover:text-blue-400"
+              className="text-sm font-medium text-slate-300 transition hover:text-white"
             >
               Events
             </Link>
 
             <Link
               href="/about"
-              className="text-sm font-medium text-slate-300 transition hover:text-blue-400"
+              className="text-sm font-medium text-slate-300 transition hover:text-white"
             >
               About
             </Link>
 
-            <Link
-              href="/login"
-              className="text-sm font-medium text-slate-300 transition hover:text-white"
-            >
-              Login
-            </Link>
+            {authLoading ? (
+              <div className="h-10 w-28 rounded-xl bg-white/5" />
+            ) : user ? (
+              <>
+                <Link
+                  href={getDashboardPath()}
+                  className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-600/25 transition hover:bg-blue-500"
+                >
+                  Dashboard
+                </Link>
 
-            <Link
-              href="/register"
-              className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold shadow-lg shadow-blue-600/20 transition hover:bg-blue-500"
-            >
-              Register
-            </Link>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                  className="rounded-xl border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-white/[0.08] hover:text-white"
+                >
+                  {loggingOut ? "Logging out..." : "Logout"}
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="rounded-xl border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-blue-400/30 hover:bg-white/[0.08]"
+                >
+                  Login
+                </Link>
+
+                <Link
+                  href="/register"
+                  className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-600/25 transition hover:bg-blue-500"
+                >
+                  Register
+                </Link>
+              </>
+            )}
 
           </nav>
 
-
-          {/* MOBILE MENU BUTTON */}
+          {/* MOBILE BUTTON */}
 
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xl md:hidden"
-            aria-label="Toggle menu"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-lg md:hidden"
+            aria-label="Toggle navigation"
           >
             {mobileMenuOpen ? "✕" : "☰"}
           </button>
 
         </div>
 
-
-        {/* MOBILE NAVIGATION */}
+        {/* MOBILE NAV */}
 
         {mobileMenuOpen && (
-          <div className="border-t border-white/10 bg-[#020817] px-5 py-5 md:hidden">
+          <div className="border-t border-white/10 bg-[#020617] px-4 py-4 md:hidden">
 
-            <nav className="flex flex-col gap-2">
+            <nav className="flex flex-col gap-1">
 
               <Link
                 href="/events"
                 onClick={() => setMobileMenuOpen(false)}
-                className="rounded-lg px-4 py-3 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
+                className="rounded-xl px-4 py-3 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
               >
                 Events
               </Link>
@@ -181,26 +318,51 @@ export default function Home() {
               <Link
                 href="/about"
                 onClick={() => setMobileMenuOpen(false)}
-                className="rounded-lg px-4 py-3 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
+                className="rounded-xl px-4 py-3 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
               >
                 About
               </Link>
 
-              <Link
-                href="/login"
-                onClick={() => setMobileMenuOpen(false)}
-                className="rounded-lg px-4 py-3 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
-              >
-                Login
-              </Link>
+              {authLoading ? (
+                <div className="mx-4 my-2 h-10 rounded-xl bg-white/5" />
+              ) : user ? (
+                <>
+                  <Link
+                    href={getDashboardPath()}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="rounded-xl bg-blue-600 px-4 py-3 text-center text-sm font-bold"
+                  >
+                    Dashboard
+                  </Link>
 
-              <Link
-                href="/register"
-                onClick={() => setMobileMenuOpen(false)}
-                className="rounded-lg bg-blue-600 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-blue-500"
-              >
-                Register
-              </Link>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    disabled={loggingOut}
+                    className="mt-1 rounded-xl border border-white/10 px-4 py-3 text-sm font-semibold text-slate-200"
+                  >
+                    {loggingOut ? "Logging out..." : "Logout"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="rounded-xl border border-white/10 px-4 py-3 text-center text-sm font-semibold text-slate-200"
+                  >
+                    Login
+                  </Link>
+
+                  <Link
+                    href="/register"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="mt-1 rounded-xl bg-blue-600 px-4 py-3 text-center text-sm font-bold"
+                  >
+                    Register
+                  </Link>
+                </>
+              )}
 
             </nav>
 
@@ -209,94 +371,78 @@ export default function Home() {
 
       </header>
 
-
       {/* =====================================================
           HERO
       ====================================================== */}
 
       <section className="relative overflow-hidden">
 
-        {/* Background glow */}
+        <div className="pointer-events-none absolute left-[-180px] top-[-180px] h-[480px] w-[480px] rounded-full bg-blue-600/20 blur-[150px]" />
 
-        <div className="pointer-events-none absolute left-[-200px] top-[-180px] h-[500px] w-[500px] rounded-full bg-blue-600/20 blur-[150px]" />
+        <div className="pointer-events-none absolute right-[-180px] top-[80px] h-[480px] w-[480px] rounded-full bg-cyan-500/10 blur-[150px]" />
 
-        <div className="pointer-events-none absolute right-[-200px] top-[100px] h-[500px] w-[500px] rounded-full bg-cyan-500/10 blur-[150px]" />
+        <div className="pointer-events-none absolute bottom-[-250px] left-1/2 h-[450px] w-[700px] -translate-x-1/2 rounded-full bg-indigo-600/10 blur-[160px]" />
 
-        {/* Grid */}
+        <div className="pointer-events-none absolute inset-0 opacity-[0.055] [background-image:linear-gradient(rgba(255,255,255,0.2)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.2)_1px,transparent_1px)] [background-size:72px_72px]" />
 
-        <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(rgba(255,255,255,0.15)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.15)_1px,transparent_1px)] [background-size:72px_72px]" />
+        <div className="relative mx-auto max-w-6xl px-5 pb-24 pt-20 text-center sm:px-8 sm:pb-28 sm:pt-24 lg:pb-32 lg:pt-32">
 
-
-        <div className="relative mx-auto max-w-6xl px-5 pb-24 pt-24 text-center sm:px-8 lg:pb-32 lg:pt-32">
-
-          {/* Badge */}
-
-          <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-300">
-            <span>✦</span>
+          <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-500/10 px-4 py-2 text-xs font-semibold text-blue-300 sm:text-sm">
+            <span className="text-cyan-300">✦</span>
             Discover events that matter
           </div>
 
-
-          {/* Main heading */}
-
-          <h1 className="mt-7 text-5xl font-bold leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl">
+          <h1 className="mx-auto mt-7 max-w-4xl text-5xl font-black leading-[0.98] tracking-[-0.04em] sm:text-6xl lg:text-8xl">
 
             Find your next
 
-            <br />
-
-            <span className="bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent">
+            <span className="mt-2 block bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent">
               great event.
             </span>
 
           </h1>
 
-
-          {/* Description */}
-
-          <p className="mx-auto mt-7 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
-
-            Discover hackathons, competitions, workshops and other
-            events. Explore event details, choose a competition and
-            register through EventNest.
-
+          <p className="mx-auto mt-7 max-w-2xl text-sm leading-7 text-slate-400 sm:text-lg sm:leading-8">
+            Discover hackathons, competitions, workshops and
+            experiences worth attending. Explore, register and
+            experience everything through EventNest.
           </p>
 
+          {/* HERO BUTTONS */}
 
-          {/* SEARCH */}
-
-          <div className="mx-auto mt-9 flex max-w-2xl flex-col gap-3 sm:flex-row">
-
-            <div className="flex flex-1 items-center rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3.5 backdrop-blur-xl">
-
-              <span className="mr-3 text-lg text-slate-500">
-                🔍
-              </span>
-
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search events..."
-                className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500 sm:text-base"
-              />
-
-            </div>
-
+          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
 
             <Link
               href="/events"
-              className="rounded-xl bg-blue-600 px-7 py-3.5 font-semibold shadow-xl shadow-blue-600/20 transition hover:bg-blue-500"
+              className="group inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-7 py-3.5 text-sm font-bold text-white shadow-xl shadow-blue-600/20 transition hover:-translate-y-0.5 hover:bg-blue-500 sm:w-auto"
             >
               Explore Events
+              <span className="transition-transform group-hover:translate-x-1">
+                →
+              </span>
             </Link>
+
+            {user ? (
+              <Link
+                href={getDashboardPath()}
+                className="inline-flex w-full items-center justify-center rounded-xl border border-blue-400/20 bg-blue-500/10 px-7 py-3.5 text-sm font-semibold text-blue-300 transition hover:bg-blue-500/20 sm:w-auto"
+              >
+                Go to Dashboard
+              </Link>
+            ) : (
+              <Link
+                href="/register"
+                className="inline-flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-7 py-3.5 text-sm font-semibold text-slate-200 transition hover:bg-white/10 sm:w-auto"
+              >
+                Join EventNest
+              </Link>
+            )}
 
           </div>
 
-
           {/* CATEGORIES */}
 
-          <div className="mt-7 flex flex-wrap justify-center gap-2">
+          <div className="mt-9 flex flex-wrap justify-center gap-2">
 
             {[
               "Hackathons",
@@ -304,292 +450,313 @@ export default function Home() {
               "Workshops",
               "Tech Events",
             ].map((category) => (
-
-              <span
+              <Link
                 key={category}
-                className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs text-slate-400"
+                href="/events"
+                className="rounded-full border border-white/10 bg-white/[0.035] px-4 py-2 text-xs font-medium text-slate-400 transition hover:border-blue-500/30 hover:bg-blue-500/10 hover:text-blue-300"
               >
                 {category}
-              </span>
-
+              </Link>
             ))}
+
+          </div>
+
+          {/* STATS */}
+
+          <div className="mx-auto mt-14 grid max-w-xl grid-cols-3 border-y border-white/10 py-5">
+
+            <div className="px-3">
+              <p className="text-lg font-bold sm:text-xl">
+                Events
+              </p>
+              <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-600 sm:text-xs">
+                Discover
+              </p>
+            </div>
+
+            <div className="border-x border-white/10 px-3">
+              <p className="text-lg font-bold sm:text-xl">
+                Competitions
+              </p>
+              <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-600 sm:text-xs">
+                Participate
+              </p>
+            </div>
+
+            <div className="px-3">
+              <p className="text-lg font-bold sm:text-xl">
+                Digital
+              </p>
+              <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-600 sm:text-xs">
+                Tickets
+              </p>
+            </div>
 
           </div>
 
         </div>
 
       </section>
-
 
       {/* =====================================================
           UPCOMING EVENTS
       ====================================================== */}
 
-      <section className="mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:px-10">
+      <section className="border-t border-white/[0.06]">
 
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:px-10">
 
-          <div>
+          <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
 
-            <p className="text-sm font-semibold uppercase tracking-widest text-blue-400">
-              Discover
-            </p>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-400">
+                Discover
+              </p>
 
-            <h2 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-              Upcoming Events
-            </h2>
+              <h2 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">
+                Upcoming Events
+              </h2>
 
-            <p className="mt-3 max-w-xl text-slate-500">
-              Explore published events and find something worth attending.
-            </p>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-slate-500 sm:text-base">
+                Find events, competitions and experiences
+                happening through EventNest.
+              </p>
+            </div>
+
+            <Link
+              href="/events"
+              className="group text-sm font-semibold text-blue-400 transition hover:text-blue-300"
+            >
+              View all events
+              <span className="ml-1 transition group-hover:ml-2">
+                →
+              </span>
+            </Link>
 
           </div>
 
+          {/* LOADING */}
 
-          <Link
-            href="/events"
-            className="text-sm font-semibold text-blue-400 transition hover:text-blue-300"
-          >
-            View all events →
-          </Link>
+          {loadingEvents && (
+            <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+
+              {[1, 2, 3].map((item) => (
+                <div
+                  key={item}
+                  className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025]"
+                >
+                  <div className="h-52 animate-pulse bg-white/5" />
+
+                  <div className="space-y-3 p-5">
+                    <div className="h-5 w-3/4 animate-pulse rounded bg-white/5" />
+                    <div className="h-4 w-full animate-pulse rounded bg-white/5" />
+                    <div className="h-4 w-2/3 animate-pulse rounded bg-white/5" />
+                  </div>
+                </div>
+              ))}
+
+            </div>
+          )}
+
+          {/* EVENTS */}
+
+          {!loadingEvents && events.length > 0 && (
+            <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+
+              {events.map((event) => (
+                <Link
+                  key={event.id}
+                  href={`/events/${event.id}`}
+                  className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025] transition duration-300 hover:-translate-y-1 hover:border-blue-500/30 hover:bg-white/[0.045]"
+                >
+
+                  <div className="relative h-52 overflow-hidden bg-[#0b1224]">
+
+                    {event.event_image ? (
+                      <img
+                        src={event.event_image}
+                        alt={event.name}
+                        className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center bg-gradient-to-br from-blue-500/10 via-indigo-500/5 to-cyan-500/10">
+                        <span className="text-5xl opacity-60">
+                          🎫
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/60 to-transparent" />
+
+                    <div className="absolute left-4 top-4 rounded-full border border-emerald-400/20 bg-[#020817]/80 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300 backdrop-blur">
+                      Published
+                    </div>
+
+                  </div>
+
+                  <div className="p-5">
+
+                    <h3 className="line-clamp-1 text-lg font-bold text-white transition group-hover:text-blue-400">
+                      {event.name}
+                    </h3>
+
+                    <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">
+                      {event.description ||
+                        "Explore this EventNest event and discover what awaits."}
+                    </p>
+
+                    <div className="mt-5 space-y-2.5 text-sm text-slate-500">
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-blue-400">
+                          ◷
+                        </span>
+
+                        <span>
+                          {formatDate(event.start_date)}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-blue-400">
+                          ◉
+                        </span>
+
+                        <span className="line-clamp-1">
+                          {event.venue || "Venue to be announced"}
+                        </span>
+                      </div>
+
+                    </div>
+
+                    <div className="mt-5 flex items-center justify-between border-t border-white/10 pt-4">
+
+                      <span className="text-xs font-medium text-slate-600">
+                        EventNest
+                      </span>
+
+                      <span className="text-sm font-bold text-blue-400 transition group-hover:translate-x-1">
+                        View Event →
+                      </span>
+
+                    </div>
+
+                  </div>
+
+                </Link>
+              ))}
+
+            </div>
+          )}
+
+          {/* EMPTY */}
+
+          {!loadingEvents && events.length === 0 && (
+            <div className="mt-10 rounded-2xl border border-dashed border-white/10 bg-white/[0.025] px-6 py-14 text-center">
+
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-500/10 text-2xl">
+                📅
+              </div>
+
+              <h3 className="mt-5 text-xl font-bold">
+                No published events yet
+              </h3>
+
+              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+                Published EventNest events will appear here
+                when they are available.
+              </p>
+
+              <Link
+                href="/events"
+                className="mt-6 inline-flex rounded-xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white"
+              >
+                Browse Events
+              </Link>
+
+            </div>
+          )}
 
         </div>
 
-
-        {/* LOADING */}
-
-        {loadingEvents && (
-
-          <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-
-            {[1, 2, 3].map((item) => (
-
-              <div
-                key={item}
-                className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]"
-              >
-
-                <div className="h-48 animate-pulse bg-white/5" />
-
-                <div className="space-y-3 p-5">
-
-                  <div className="h-5 w-3/4 animate-pulse rounded bg-white/5" />
-
-                  <div className="h-4 w-full animate-pulse rounded bg-white/5" />
-
-                  <div className="h-4 w-2/3 animate-pulse rounded bg-white/5" />
-
-                </div>
-
-              </div>
-
-            ))}
-
-          </div>
-
-        )}
-
-
-        {/* EVENT CARDS */}
-
-        {!loadingEvents && filteredEvents.length > 0 && (
-
-          <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-
-            {filteredEvents.map((event) => (
-
-              <Link
-                key={event.id}
-                href={`/events/${event.id}`}
-                className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition duration-200 hover:-translate-y-1 hover:border-blue-500/30 hover:bg-white/[0.06]"
-              >
-
-                {/* IMAGE */}
-
-                <div className="relative h-48 overflow-hidden bg-[#0b1224]">
-
-                  {event.event_image ? (
-
-                    <img
-                      src={event.event_image}
-                      alt={event.name}
-                      className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                    />
-
-                  ) : (
-
-                    <div className="flex h-full items-center justify-center bg-gradient-to-br from-blue-500/10 to-cyan-500/5 text-4xl">
-                      🎫
-                    </div>
-
-                  )}
-
-
-                  <div className="absolute right-3 top-3 rounded-full border border-green-400/20 bg-[#020817]/80 px-3 py-1 text-xs font-semibold text-green-400 backdrop-blur">
-                    Published
-                  </div>
-
-                </div>
-
-
-                {/* CONTENT */}
-
-                <div className="p-5">
-
-                  <h3 className="line-clamp-1 text-lg font-semibold text-white transition group-hover:text-blue-400">
-                    {event.name}
-                  </h3>
-
-
-                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">
-                    {event.description || "Explore this EventNest event."}
-                  </p>
-
-
-                  <div className="mt-5 space-y-2 text-sm text-slate-500">
-
-                    <div className="flex items-center gap-2">
-                      <span>📅</span>
-                      <span>
-                        {formatDate(event.start_date)}
-                      </span>
-                    </div>
-
-
-                    <div className="flex items-center gap-2">
-                      <span>📍</span>
-
-                      <span className="line-clamp-1">
-                        {event.venue || "Venue to be announced"}
-                      </span>
-
-                    </div>
-
-                  </div>
-
-
-                  <div className="mt-5 border-t border-white/10 pt-4 text-sm font-semibold text-blue-400">
-                    View Event →
-                  </div>
-
-                </div>
-
-              </Link>
-
-            ))}
-
-          </div>
-
-        )}
-
-
-        {/* EMPTY STATE */}
-
-        {!loadingEvents && filteredEvents.length === 0 && (
-
-          <div className="mt-10 rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-12 text-center">
-
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-500/10 text-2xl">
-              📅
-            </div>
-
-            <h3 className="mt-5 text-xl font-semibold">
-              {search
-                ? "No matching events"
-                : "No published events yet"}
-            </h3>
-
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-              {search
-                ? "Try a different search term."
-                : "Published EventNest events will appear here."}
-            </p>
-
-
-            {search && (
-
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white"
-              >
-                Clear Search
-              </button>
-
-            )}
-
-          </div>
-
-        )}
-
       </section>
-
 
       {/* =====================================================
           HOW EVENTNEST WORKS
       ====================================================== */}
 
-      <section className="border-y border-white/10 bg-white/[0.02]">
+      <section className="border-y border-white/[0.06] bg-white/[0.018]">
 
         <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:px-10">
 
           <div className="text-center">
 
-            <p className="text-sm font-semibold uppercase tracking-widest text-blue-400">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-400">
               Simple process
             </p>
 
-            <h2 className="mt-3 text-3xl font-bold sm:text-4xl">
-              How EventNest works
+            <h2 className="mt-3 text-3xl font-black sm:text-4xl">
+              From discovery to check-in
             </h2>
 
-            <p className="mx-auto mt-4 max-w-2xl text-slate-500">
-              Everything a participant needs, from discovering an event
-              to getting their ticket.
+            <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-slate-500 sm:text-base">
+              EventNest keeps the participant journey simple,
+              from finding an event to entering it with a
+              digital ticket.
             </p>
 
           </div>
 
-
-          <div className="mt-12 grid gap-6 md:grid-cols-4">
+          <div className="mt-12 grid gap-4 md:grid-cols-4">
 
             {[
               {
                 number: "01",
+                icon: "✦",
                 title: "Discover",
                 description:
                   "Browse published events and find something interesting.",
               },
               {
                 number: "02",
+                icon: "◎",
                 title: "Explore",
                 description:
-                  "View event details, competitions, venue and schedule.",
+                  "View event details, competitions, venues and schedules.",
               },
               {
                 number: "03",
+                icon: "✓",
                 title: "Register",
                 description:
                   "Choose a competition and complete your registration.",
               },
               {
                 number: "04",
-                title: "Get Your Ticket",
+                icon: "▣",
+                title: "Check In",
                 description:
-                  "Receive your digital ticket and QR code.",
+                  "Get your digital ticket and use your QR code at the event.",
               },
             ].map((step) => (
-
               <div
                 key={step.number}
-                className="rounded-2xl border border-white/10 bg-white/[0.03] p-6"
+                className="group rounded-2xl border border-white/10 bg-white/[0.025] p-6 transition hover:-translate-y-1 hover:border-blue-500/20"
               >
 
-                <span className="text-4xl font-black text-blue-500/20">
-                  {step.number}
-                </span>
+                <div className="flex items-center justify-between">
 
-                <h3 className="mt-4 text-lg font-bold">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-400">
+                    {step.icon}
+                  </span>
+
+                  <span className="text-3xl font-black text-white/[0.06]">
+                    {step.number}
+                  </span>
+
+                </div>
+
+                <h3 className="mt-6 text-lg font-bold">
                   {step.title}
                 </h3>
 
@@ -598,7 +765,6 @@ export default function Home() {
                 </p>
 
               </div>
-
             ))}
 
           </div>
@@ -607,40 +773,55 @@ export default function Home() {
 
       </section>
 
-
       {/* =====================================================
-          ORGANIZER SECTION
+          ORGANIZER
       ====================================================== */}
 
-      <section className="px-5 py-20 sm:px-8">
+      <section className="px-5 py-20 sm:px-8 lg:px-10">
 
-        <div className="mx-auto max-w-5xl overflow-hidden rounded-3xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 via-cyan-500/5 to-transparent px-6 py-14 text-center sm:px-12">
+        <div className="relative mx-auto max-w-6xl overflow-hidden rounded-3xl border border-blue-500/20 bg-gradient-to-br from-blue-600/15 via-indigo-500/10 to-transparent px-6 py-14 text-center sm:px-12 sm:py-16">
 
-          <p className="text-sm font-semibold uppercase tracking-widest text-blue-400">
-            For event organizers
-          </p>
+          <div className="pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full bg-blue-500/10 blur-[100px]" />
 
-          <h2 className="mt-4 text-3xl font-bold sm:text-4xl">
-            Planning an event?
-          </h2>
+          <div className="relative">
 
-          <p className="mx-auto mt-4 max-w-2xl text-slate-400">
-            Create events, organize competitions, coordinate volunteers
-            and manage registrations from one platform.
-          </p>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-400">
+              For event organizers
+            </p>
 
+            <h2 className="mt-4 text-3xl font-black sm:text-4xl">
+              Your event. One platform.
+            </h2>
 
-          <Link
-            href="/login"
-            className="mt-7 inline-flex rounded-xl bg-blue-600 px-7 py-3.5 font-semibold shadow-xl shadow-blue-600/20 transition hover:bg-blue-500"
-          >
-            Get Started →
-          </Link>
+            <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-slate-400 sm:text-base">
+              Create events, organize competitions, manage
+              registrations, coordinate your team and handle
+              participant check-ins from EventNest.
+            </p>
+
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+
+              <Link
+                href={user ? getDashboardPath() : "/login"}
+                className="rounded-xl bg-blue-600 px-7 py-3.5 text-sm font-bold text-white shadow-xl shadow-blue-600/20 transition hover:bg-blue-500"
+              >
+                {user ? "Open Dashboard →" : "Get Started →"}
+              </Link>
+
+              <Link
+                href="/about"
+                className="rounded-xl border border-white/10 bg-white/5 px-7 py-3.5 text-sm font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white"
+              >
+                Learn More
+              </Link>
+
+            </div>
+
+          </div>
 
         </div>
 
       </section>
-
 
       {/* =====================================================
           FOOTER
@@ -652,12 +833,11 @@ export default function Home() {
 
           <div className="flex items-center gap-3">
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 font-bold">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 font-black">
               E
             </div>
 
             <div>
-
               <p className="font-bold">
                 EventNest
               </p>
@@ -665,38 +845,71 @@ export default function Home() {
               <p className="text-xs text-slate-600">
                 Discover. Register. Experience.
               </p>
-
             </div>
 
           </div>
 
+          <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm text-slate-500">
 
-          <div className="flex flex-wrap gap-6 text-sm text-slate-500">
-
-            <Link href="/" className="hover:text-white">
+            <Link
+              href="/"
+              className="transition hover:text-white"
+            >
               Home
             </Link>
 
-            <Link href="/events" className="hover:text-white">
+            <Link
+              href="/events"
+              className="transition hover:text-white"
+            >
               Events
             </Link>
 
-            <Link href="/about" className="hover:text-white">
+            <Link
+              href="/about"
+              className="transition hover:text-white"
+            >
               About
             </Link>
 
-            <Link href="/login" className="hover:text-white">
-              Login
-            </Link>
+            {user ? (
+              <>
+                <Link
+                  href={getDashboardPath()}
+                  className="transition hover:text-white"
+                >
+                  Dashboard
+                </Link>
 
-            <Link href="/register" className="hover:text-white">
-              Register
-            </Link>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="transition hover:text-white"
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="transition hover:text-white"
+                >
+                  Login
+                </Link>
+
+                <Link
+                  href="/register"
+                  className="transition hover:text-white"
+                >
+                  Register
+                </Link>
+              </>
+            )}
 
           </div>
 
         </div>
-
 
         <div className="border-t border-white/5 py-5 text-center text-xs text-slate-600">
           © 2026 EventNest. Smart Event Management System.

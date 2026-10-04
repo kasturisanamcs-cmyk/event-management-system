@@ -1,441 +1,394 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
-export default function EventsPage() {
+export default function ParticipantEventsPage() {
+  const supabase = createClient();
+
+  const [events, setEvents] = useState([]);
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("All");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [userName, setUserName] = useState("Participant");
 
-  const events = [
-    {
-      title: "Tech Hackathon 2026",
-      category: "Technology",
-      date: "20 August 2026",
-      time: "10:00 AM",
-      venue: "Main Auditorium",
-      participants: "120 / 150",
-      icon: "💻",
-      description:
-        "Build innovative solutions and compete with talented students.",
-    },
-    {
-      title: "AI Innovation Challenge",
-      category: "Technology",
-      date: "25 August 2026",
-      time: "11:30 AM",
-      venue: "Computer Lab",
-      participants: "75 / 100",
-      icon: "🤖",
-      description:
-        "Create an AI-powered solution for a real-world problem.",
-    },
-    {
-      title: "Web Design Competition",
-      category: "Design",
-      date: "28 August 2026",
-      time: "09:30 AM",
-      venue: "Design Studio",
-      participants: "42 / 80",
-      icon: "🎨",
-      description:
-        "Show your creativity by designing a modern and responsive website.",
-    },
-    {
-      title: "Coding Challenge",
-      category: "Coding",
-      date: "02 September 2026",
-      time: "02:00 PM",
-      venue: "Programming Lab",
-      participants: "95 / 120",
-      icon: "⌨️",
-      description:
-        "Test your programming skills through exciting coding problems.",
-    },
-    {
-      title: "Robo Wars",
-      category: "Robotics",
-      date: "05 September 2026",
-      time: "10:30 AM",
-      venue: "College Ground",
-      participants: "30 / 50",
-      icon: "🤖",
-      description:
-        "Build, control and battle your robot in an exciting competition.",
-    },
-    {
-      title: "Photography Contest",
-      category: "Creative",
-      date: "08 September 2026",
-      time: "01:00 PM",
-      venue: "Seminar Hall",
-      participants: "35 / 60",
-      icon: "📸",
-      description:
-        "Capture unique moments and showcase your photography skills.",
-    },
-  ];
+  useEffect(() => {
+    loadEvents();
+  }, []);
+
+  async function loadEvents() {
+    try {
+      setLoading(true);
+      setError("");
+
+      // Check logged-in user
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        console.error("User error:", userError);
+      }
+
+      if (!user) {
+        setError("You are not logged in. Please login first.");
+        setLoading(false);
+        return;
+      }
+
+      // Get participant profile
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profile?.full_name) {
+        setUserName(profile.full_name);
+      }
+
+      // Get published events
+      const { data, error: eventError } = await supabase
+        .from("events")
+        .select(
+          "id, name, description, start_date, end_date, registration_deadline, venue, event_image, status"
+        )
+        .eq("status", "PUBLISHED")
+        .order("start_date", { ascending: true });
+
+      if (eventError) {
+        console.error("Event error:", eventError);
+        setError(eventError.message);
+        setLoading(false);
+        return;
+      }
+
+      setEvents(data || []);
+    } catch (err) {
+      console.error(err);
+      setError("Something went wrong while loading events.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const filteredEvents = events.filter((event) => {
-    const matchesSearch =
-      event.title.toLowerCase().includes(search.toLowerCase()) ||
-      event.category.toLowerCase().includes(search.toLowerCase());
+    const text = search.toLowerCase();
 
-    const matchesCategory =
-      category === "All" || event.category === category;
-
-    return matchesSearch && matchesCategory;
+    return (
+      event.name?.toLowerCase().includes(text) ||
+      event.description?.toLowerCase().includes(text) ||
+      event.venue?.toLowerCase().includes(text)
+    );
   });
 
+  function formatDate(date) {
+    if (!date) return "Not available";
+
+    return new Date(date).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }
+
+  function formatDates(start, end) {
+    if (!start) return "Date not available";
+
+    if (!end || start === end) {
+      return formatDate(start);
+    }
+
+    return `${formatDate(start)} - ${formatDate(end)}`;
+  }
+
+  async function logout() {
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  }
+
   return (
-    <div className="min-h-screen bg-[#071225] text-white">
-
+    <div className="min-h-screen bg-[#020617] text-white">
       {/* Sidebar */}
-      <aside className="fixed left-0 top-0 hidden h-screen w-64 border-r border-white/10 bg-[#08152b] p-5 lg:block">
+      <aside className="fixed left-0 top-0 hidden h-screen w-64 border-r border-white/10 bg-[#0f172a] lg:block">
+        <div className="flex h-full flex-col">
+          <div className="border-b border-white/10 px-6 py-5">
+            <Link href="/" className="text-2xl font-bold">
+              Event<span className="text-blue-400">Nest</span>
+            </Link>
 
-        {/* Logo */}
-        <div className="mb-10 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 text-xl font-bold">
-            E
-          </div>
-
-          <div>
-            <h1 className="text-lg font-bold">EventHub AI</h1>
-            <p className="text-xs text-gray-400">
-              Smart Event Management
+            <p className="mt-1 text-xs text-slate-400">
+              Participant Portal
             </p>
           </div>
+
+          <nav className="flex-1 space-y-2 px-4 py-6">
+            <Link
+              href="/participant/dashboard"
+              className="flex items-center gap-3 rounded-xl px-4 py-3 text-slate-300 hover:bg-white/5 hover:text-white"
+            >
+              🏠 Dashboard
+            </Link>
+
+            <Link
+              href="/participant/events"
+              className="flex items-center gap-3 rounded-xl bg-blue-500/10 px-4 py-3 text-blue-400"
+            >
+              📅 Events
+            </Link>
+
+            <Link
+              href="/participant/registrations"
+              className="flex items-center gap-3 rounded-xl px-4 py-3 text-slate-300 hover:bg-white/5 hover:text-white"
+            >
+              📝 My Registrations
+            </Link>
+
+            <Link
+              href="/participant/tickets"
+              className="flex items-center gap-3 rounded-xl px-4 py-3 text-slate-300 hover:bg-white/5 hover:text-white"
+            >
+              🎟️ My Tickets
+            </Link>
+
+            <Link
+              href="/participant/schedule"
+              className="flex items-center gap-3 rounded-xl px-4 py-3 text-slate-300 hover:bg-white/5 hover:text-white"
+            >
+              🗓️ Schedule
+            </Link>
+
+            <Link
+              href="/participant/announcements"
+              className="flex items-center gap-3 rounded-xl px-4 py-3 text-slate-300 hover:bg-white/5 hover:text-white"
+            >
+              📢 Announcements
+            </Link>
+
+            <Link
+              href="/participant/participant/profile"
+              className="flex items-center gap-3 rounded-xl px-4 py-3 text-slate-300 hover:bg-white/5 hover:text-white"
+            >
+              👤 Profile
+            </Link>
+          </nav>
+
+          <div className="border-t border-white/10 p-4">
+            <button
+              onClick={logout}
+              className="w-full rounded-xl px-4 py-3 text-left text-slate-300 hover:bg-red-500/10 hover:text-red-400"
+            >
+              🚪 Logout
+            </button>
+          </div>
         </div>
-
-        {/* Navigation */}
-        <nav className="space-y-2">
-
-          <NavItem
-            icon="⌂"
-            title="Dashboard"
-            href="/participant/dashboard"
-          />
-
-          <NavItem
-            icon="◈"
-            title="Browse Events"
-            active
-          />
-
-          <NavItem
-            icon="✓"
-            title="My Registrations"
-            href="/participant/registrations"
-          />
-
-          <NavItem
-            icon="▣"
-            title="My Tickets"
-            href="/participant/tickets"
-          />
-
-          <NavItem
-            icon="◷"
-            title="Schedule"
-            href="/participant/schedule"
-          />
-
-          <NavItem
-            icon="🔔"
-            title="Announcements"
-            href="/participant/announcements"
-          />
-
-        </nav>
-
-        {/* Logout */}
-        <div className="absolute bottom-5 left-5 right-5">
-          <button className="w-full rounded-xl border border-white/10 px-4 py-3 text-left text-gray-400 transition hover:bg-red-500/10 hover:text-red-400">
-            ↪ Logout
-          </button>
-        </div>
-
       </aside>
 
       {/* Main */}
-      <main className="lg:ml-64">
-
+      <main className="min-h-screen lg:ml-64">
         {/* Header */}
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#08152b]/90 px-6 py-5 backdrop-blur-xl lg:px-8">
+        <header className="border-b border-white/10 px-4 py-6 sm:px-6 lg:px-8">
+          <p className="text-sm text-blue-400">Participant</p>
 
-          <div>
-            <h2 className="text-2xl font-bold">
-              Browse Events
-            </h2>
+          <div className="mt-1 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div>
+              <h1 className="text-3xl font-bold">Browse Events</h1>
 
-            <p className="mt-1 text-sm text-gray-400">
-              Discover events and competitions happening around you.
-            </p>
-          </div>
-
-          <div className="hidden items-center gap-3 sm:flex">
-
-            <button className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 transition hover:bg-white/10">
-              🔔
-            </button>
-
-            <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 font-bold">
-                U
-              </div>
-
-              <div>
-                <p className="text-sm font-semibold">
-                  Participant
-                </p>
-
-                <p className="text-xs text-gray-400">
-                  Student
-                </p>
-              </div>
+              <p className="mt-1 text-sm text-slate-400">
+                Discover published events and competitions.
+              </p>
             </div>
 
-          </div>
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-sm font-medium">{userName}</p>
+                <p className="text-xs text-slate-400">Participant</p>
+              </div>
 
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/20">
+                👤
+              </div>
+            </div>
+          </div>
         </header>
 
         {/* Content */}
-        <section className="p-6 lg:p-8">
-
-          {/* Page intro */}
+        <section className="px-4 py-6 sm:px-6 lg:px-8">
+          {/* Search */}
           <div className="mb-8">
-
-            <p className="mb-2 text-blue-400">
-              Explore & Participate
-            </p>
-
-            <h1 className="text-3xl font-bold lg:text-4xl">
-              Find Your Next Event
-            </h1>
-
-            <p className="mt-2 max-w-2xl text-gray-400">
-              Browse upcoming college events, competitions and
-              activities. Register for the ones you don't want to miss.
-            </p>
-
-          </div>
-
-          {/* Search + Filter */}
-          <div className="mb-8 flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 lg:flex-row">
-
-            {/* Search */}
-            <div className="relative flex-1">
-
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">
-                🔎
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2">
+                🔍
               </span>
 
               <input
                 type="text"
-                placeholder="Search events..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-[#08152b] py-3 pl-11 pr-4 text-white outline-none transition placeholder:text-gray-500 focus:border-blue-500"
+                placeholder="Search events by name, description or venue..."
+                className="w-full rounded-xl border border-white/10 bg-[#0f172a] py-3 pl-11 pr-4 text-white outline-none placeholder:text-slate-500 focus:border-blue-500"
               />
-
             </div>
-
-            {/* Category */}
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="rounded-xl border border-white/10 bg-[#08152b] px-5 py-3 text-gray-300 outline-none focus:border-blue-500"
-            >
-              <option>All</option>
-              <option>Technology</option>
-              <option>Design</option>
-              <option>Coding</option>
-              <option>Robotics</option>
-              <option>Creative</option>
-            </select>
-
           </div>
 
-          {/* Results */}
-          <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-xl font-semibold">Available Events</h2>
 
-            <div>
-              <h2 className="text-xl font-bold">
-                Upcoming Events
-              </h2>
+          <p className="mt-1 text-sm text-slate-400">
+            {filteredEvents.length}{" "}
+            {filteredEvents.length === 1 ? "event" : "events"} found
+          </p>
 
-              <p className="mt-1 text-sm text-gray-500">
-                {filteredEvents.length} events available
+          {/* Loading */}
+          {loading && (
+            <div className="mt-8 rounded-2xl border border-white/10 bg-[#0f172a] p-12 text-center">
+              <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-white/10 border-t-blue-500" />
+
+              <p className="mt-4 text-slate-400">
+                Loading events...
               </p>
             </div>
-
-          </div>
-
-          {/* Event Grid */}
-          {filteredEvents.length > 0 ? (
-
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-
-              {filteredEvents.map((event) => (
-                <EventCard
-                  key={event.title}
-                  event={event}
-                />
-              ))}
-
-            </div>
-
-          ) : (
-
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] py-20 text-center">
-
-              <div className="text-5xl">
-                🔎
-              </div>
-
-              <h3 className="mt-4 text-xl font-bold">
-                No events found
-              </h3>
-
-              <p className="mt-2 text-gray-500">
-                Try another search or category.
-              </p>
-
-            </div>
-
           )}
 
+          {/* Error */}
+          {!loading && error && (
+            <div className="mt-8 rounded-2xl border border-red-500/20 bg-red-500/10 p-6">
+              <h3 className="text-lg font-semibold text-red-400">
+                Unable to load events
+              </h3>
+
+              <p className="mt-2 text-sm text-slate-300">
+                {error}
+              </p>
+
+              <button
+                onClick={loadEvents}
+                className="mt-4 rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium hover:bg-blue-600"
+              >
+                Try Again
+              </button>
+            </div>
+          )}
+
+          {/* Events */}
+          {!loading && !error && (
+            <>
+              {filteredEvents.length === 0 ? (
+                <div className="mt-8 rounded-2xl border border-white/10 bg-[#0f172a] p-12 text-center">
+                  <div className="text-5xl">📅</div>
+
+                  <h3 className="mt-5 text-xl font-semibold">
+                    No events found
+                  </h3>
+
+                  <p className="mt-2 text-sm text-slate-400">
+                    {search
+                      ? "No published events match your search."
+                      : "There are currently no published events available."}
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+                  {filteredEvents.map((event) => (
+                    <article
+                      key={event.id}
+                      className="overflow-hidden rounded-2xl border border-white/10 bg-[#0f172a] transition hover:-translate-y-1 hover:border-blue-500/40"
+                    >
+                      {/* Image */}
+                      <div className="h-48 bg-slate-900">
+                        {event.event_image ? (
+                          <img
+                            src={event.event_image}
+                            alt={event.name}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-6xl">
+                            🎫
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Details */}
+                      <div className="p-5">
+                        <div className="mb-3 inline-flex rounded-full bg-green-500/10 px-3 py-1 text-xs text-green-400">
+                          Published
+                        </div>
+
+                        <h3 className="text-xl font-semibold">
+                          {event.name}
+                        </h3>
+
+                        <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-400">
+                          {event.description ||
+                            "No description available."}
+                        </p>
+
+                        <div className="mt-5 space-y-3 border-t border-white/10 pt-4">
+                          <div className="flex gap-3">
+                            <span>📅</span>
+
+                            <div>
+                              <p className="text-xs text-slate-500">
+                                Event Dates
+                              </p>
+
+                              <p className="text-sm text-slate-200">
+                                {formatDates(
+                                  event.start_date,
+                                  event.end_date
+                                )}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-3">
+                            <span>📍</span>
+
+                            <div>
+                              <p className="text-xs text-slate-500">
+                                Venue
+                              </p>
+
+                              <p className="text-sm text-slate-200">
+                                {event.venue || "Not specified"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-3">
+                            <span>⏰</span>
+
+                            <div>
+                              <p className="text-xs text-slate-500">
+                                Registration Deadline
+                              </p>
+
+                              <p className="text-sm text-slate-200">
+                                {formatDate(
+                                  event.registration_deadline
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <Link
+                          href={`/participant/events/details?eventId=${event.id}`}
+                          className="mt-6 flex w-full items-center justify-center rounded-xl bg-blue-500 px-4 py-3 text-sm font-semibold hover:bg-blue-600"
+                        >
+                          View Event Details →
+                        </Link>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </section>
-
       </main>
-
     </div>
   );
-}
-
-
-/* ---------------- Navigation Item ---------------- */
-
-function NavItem({ icon, title, href, active }) {
-  return (
-    <a
-      href={href || "#"}
-      className={`flex items-center gap-3 rounded-xl px-4 py-3 transition ${
-        active
-          ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
-          : "text-gray-400 hover:bg-white/5 hover:text-white"
-      }`}
-    >
-      <span className="text-lg">
-        {icon}
-      </span>
-
-      <span>
-        {title}
-      </span>
-    </a>
-  );
-}
-
-
-/* ---------------- Event Card ---------------- */
-
-function EventCard({ event }) {
-  return (
-    <div className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition duration-200 hover:-translate-y-1 hover:border-blue-500/40 hover:bg-white/[0.06]">
-
-      {/* Event Banner */}
-      <div className="relative flex h-36 items-center justify-center bg-gradient-to-br from-blue-600/20 via-cyan-500/10 to-purple-600/20">
-
-        <div className="text-6xl transition duration-200 group-hover:scale-110">
-          {event.icon}
-        </div>
-
-        {/* Category */}
-        <span className="absolute right-4 top-4 rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-300">
-          {event.category}
-        </span>
-
-      </div>
-
-      {/* Card Content */}
-      <div className="p-5">
-
-        <h3 className="text-xl font-bold">
-          {event.title}
-        </h3>
-
-        <p className="mt-2 text-sm leading-6 text-gray-400">
-          {event.description}
-        </p>
-
-        {/* Details */}
-        <div className="mt-5 space-y-3 text-sm">
-
-          <div className="flex items-center gap-3 text-gray-400">
-            <span>📅</span>
-            <span>{event.date}</span>
-          </div>
-
-          <div className="flex items-center gap-3 text-gray-400">
-            <span>◷</span>
-            <span>{event.time}</span>
-          </div>
-
-          <div className="flex items-center gap-3 text-gray-400">
-            <span>📍</span>
-            <span>{event.venue}</span>
-          </div>
-
-        </div>
-
-        {/* Participants */}
-        <div className="mt-5">
-
-          <div className="mb-2 flex justify-between text-xs">
-
-            <span className="text-gray-500">
-              Participants
-            </span>
-
-            <span className="text-gray-400">
-              {event.participants}
-            </span>
-
-          </div>
-
-          <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400"
-              style={{
-                width: getProgress(event.participants),
-              }}
-            />
-
-          </div>
-
-        </div>
-
-        {/* Button */}
-        <Link
-  href="/participant/events/details"
-  className="mt-6 block w-full rounded-xl bg-blue-600 px-4 py-3 text-center font-semibold transition hover:bg-blue-500"
->
-  View Details →
-</Link>
-
-      </div>
-
-    </div>
-  );
-}
-
-
-/* ---------------- Progress ---------------- */
-
-function getProgress(value) {
-  const [current, total] = value.split("/").map(Number);
-
-  return `${(current / total) * 100}%`;
 }

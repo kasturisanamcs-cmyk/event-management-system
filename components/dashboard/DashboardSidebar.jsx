@@ -12,13 +12,13 @@ const menus = {
       items: [
         {
           name: "Dashboard",
-          href: "/dashboard",
+          href: "/admin/dashboard",
           icon: "▣",
         },
         {
           name: "Events",
           href: "/dashboard/events",
-          icon: "▤",
+          icon: "◈",
         },
         {
           name: "Competitions",
@@ -34,7 +34,7 @@ const menus = {
         {
           name: "Organizers",
           href: "/dashboard/organizers",
-          icon: "◉",
+          icon: "◎",
         },
         {
           name: "Participants",
@@ -87,8 +87,8 @@ const menus = {
         },
         {
           name: "My Events",
-          href: "/organizer/events",
-          icon: "▤",
+          href: "/dashboard/events",
+          icon: "◈",
         },
         {
           name: "Competitions",
@@ -146,6 +146,70 @@ const menus = {
     },
   ],
 
+  COMPETITION_MEMBER: [
+    {
+      section: "MAIN",
+      items: [
+        {
+          name: "Dashboard",
+          href: "/competition-member/dashboard",
+          icon: "▣",
+        },
+        {
+          name: "My Competitions",
+          href: "/competition-member/competitions",
+          icon: "🏆",
+        },
+        {
+          name: "Registrations",
+          href: "/competition-member/registrations",
+          icon: "✓",
+        },
+        {
+          name: "Participants",
+          href: "/competition-member/participants",
+          icon: "●",
+        },
+      ],
+    },
+
+    {
+      section: "OPERATIONS",
+      items: [
+        {
+          name: "Schedule",
+          href: "/competition-member/schedule",
+          icon: "◷",
+        },
+        {
+          name: "Offline Payments",
+          href: "/competition-member/payments",
+          icon: "₹",
+        },
+        {
+          name: "Tickets & QR",
+          href: "/competition-member/tickets",
+          icon: "▣",
+        },
+        {
+          name: "QR Check-In",
+          href: "/competition-member/scan",
+          icon: "⌾",
+        },
+        {
+          name: "Attendance",
+          href: "/competition-member/attendance",
+          icon: "✓",
+        },
+        {
+          name: "Announcements",
+          href: "/competition-member/announcements",
+          icon: "◇",
+        },
+      ],
+    },
+  ],
+
   PARTICIPANT: [
     {
       section: "MAIN",
@@ -179,7 +243,7 @@ const menus = {
         {
           name: "My Tickets & QR",
           href: "/participant/tickets",
-          icon: "▤",
+          icon: "▣",
         },
         {
           name: "Payment History",
@@ -196,10 +260,7 @@ const menus = {
   ],
 };
 
-export default function DashboardSidebar({
-  mobileOpen = false,
-  onClose,
-}) {
+export default function DashboardSidebar() {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -226,7 +287,10 @@ export default function DashboardSidebar({
           return;
         }
 
-        const { data: profile, error: profileError } = await supabase
+        const {
+          data: profile,
+          error: profileError,
+        } = await supabase
           .from("profiles")
           .select("role")
           .eq("id", user.id)
@@ -244,11 +308,19 @@ export default function DashboardSidebar({
         }
 
         if (mounted) {
-          setRole(profile?.role || null);
+          setRole(
+            profile?.role
+              ? profile.role.trim().toUpperCase()
+              : null
+          );
+
           setLoading(false);
         }
       } catch (error) {
-        console.error("Dashboard sidebar error:", error);
+        console.error(
+          "Dashboard sidebar error:",
+          error
+        );
 
         if (mounted) {
           setLoading(false);
@@ -266,10 +338,14 @@ export default function DashboardSidebar({
   async function handleLogout() {
     const supabase = createClient();
 
-    const { error } = await supabase.auth.signOut();
+    const { error } =
+      await supabase.auth.signOut();
 
     if (error) {
-      console.error("Logout failed:", error);
+      console.error(
+        "Logout failed:",
+        error
+      );
       return;
     }
 
@@ -278,37 +354,34 @@ export default function DashboardSidebar({
   }
 
   /*
-   * IMPORTANT:
+   * The pathname only controls which menu
+   * should be visually displayed.
    *
-   * We intentionally DO NOT redirect based on pathname here.
-   *
-   * An organizer can legitimately visit:
-   *
-   * /dashboard/events
-   * /dashboard/events/[id]
-   * /dashboard/events/[id]/competitions
-   * /dashboard/events/[id]/organizers
-   *
-   * These routes must NOT automatically send the organizer
-   * back to /organizer/dashboard.
+   * It does NOT redirect the user.
    */
 
   let currentRole = role;
 
-  /*
-   * The URL is only used to select the visual menu.
-   * It is NOT used to perform redirects.
-   */
-
   if (pathname.startsWith("/participant")) {
     currentRole = "PARTICIPANT";
-  } else if (pathname.startsWith("/organizer")) {
+  } else if (
+    pathname.startsWith("/organizer")
+  ) {
     currentRole = "ORGANIZER";
+  } else if (
+    pathname.startsWith("/competition-member")
+  ) {
+    currentRole = "COMPETITION_MEMBER";
   }
 
   /*
-   * If an organizer is inside /dashboard/*
-   * keep the ORGANIZER menu.
+   * IMPORTANT:
+   *
+   * /dashboard/* is shared by ADMIN and ORGANIZER.
+   *
+   * Therefore:
+   * ADMIN + /dashboard/* → ADMIN menu
+   * ORGANIZER + /dashboard/* → ORGANIZER menu
    */
 
   if (
@@ -318,11 +391,6 @@ export default function DashboardSidebar({
     currentRole = "ORGANIZER";
   }
 
-  /*
-   * If admin is inside /dashboard/*
-   * show ADMIN menu.
-   */
-
   if (
     role === "ADMIN" &&
     pathname.startsWith("/dashboard")
@@ -330,18 +398,39 @@ export default function DashboardSidebar({
     currentRole = "ADMIN";
   }
 
-  const currentMenu = menus[currentRole] || [];
+  /*
+   * If admin is specifically on /admin/*
+   * keep ADMIN menu.
+   */
+
+  if (
+    role === "ADMIN" &&
+    pathname.startsWith("/admin")
+  ) {
+    currentRole = "ADMIN";
+  }
+
+  const currentMenu =
+    menus[currentRole] || [];
 
   const displayRole = loading
     ? "Loading..."
     : currentRole || "USER";
 
+  /*
+   * CORRECT DASHBOARD ROUTES
+   */
+
   const dashboardHref =
-    currentRole === "PARTICIPANT"
-      ? "/participant/dashboard"
+    currentRole === "ADMIN"
+      ? "/admin/dashboard"
       : currentRole === "ORGANIZER"
       ? "/organizer/dashboard"
-      : "/dashboard";
+      : currentRole === "COMPETITION_MEMBER"
+      ? "/competition-member/dashboard"
+      : currentRole === "PARTICIPANT"
+      ? "/participant/dashboard"
+      : "/login";
 
   const profileHref =
     currentRole === "PARTICIPANT"
@@ -353,229 +442,170 @@ export default function DashboardSidebar({
       ? "/participant/settings"
       : "/dashboard/settings";
 
-  function handleNavigation() {
-    if (onClose) {
-      onClose();
-    }
-  }
-
   return (
-    <>
-      {/* Mobile Overlay */}
-      {mobileOpen && (
-        <button
-          type="button"
-          aria-label="Close navigation"
-          onClick={onClose}
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
-        />
-      )}
+    <aside className="flex h-screen w-72 shrink-0 flex-col border-r border-white/10 bg-[#050b18] text-white">
 
-      {/* Sidebar */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 flex-col border-r border-white/10 bg-[#050b18] text-white shadow-2xl transition-transform duration-300 ease-in-out lg:relative lg:z-auto lg:translate-x-0 lg:shadow-none ${
-          mobileOpen
-            ? "translate-x-0"
-            : "-translate-x-full"
-        }`}
-      >
+      {/* =====================================================
+          LOGO
+      ====================================================== */}
 
-        {/* =====================================================
-            LOGO
-        ====================================================== */}
+      <div className="border-b border-white/10 px-6 py-5">
 
-        <div className="border-b border-white/10 px-6 py-5">
+        <Link
+          href={dashboardHref}
+          className="flex items-center gap-3"
+        >
 
-          <div className="flex items-center justify-between">
-
-            <Link
-              href={dashboardHref}
-              onClick={handleNavigation}
-              className="flex items-center gap-3"
-            >
-
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 font-bold text-white">
-                E
-              </div>
-
-              <div>
-                <p className="font-bold text-white">
-                  EventNest
-                </p>
-
-                <p className="text-xs text-slate-500">
-                  Smart Event Management
-                </p>
-              </div>
-
-            </Link>
-
-            {/* Mobile Close Button */}
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close navigation menu"
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/[0.06] hover:text-white lg:hidden"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 font-bold text-white">
+            E
           </div>
 
-        </div>
+          <div>
+            <p className="font-bold text-white">
+              EventNest
+            </p>
 
+            <p className="text-xs text-slate-500">
+              Smart Event Management
+            </p>
+          </div>
 
-        {/* =====================================================
-            CURRENT ROLE
-        ====================================================== */}
+        </Link>
 
-        <div className="border-b border-white/10 px-6 py-4">
+      </div>
 
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-600">
-            Current Role
-          </p>
+      {/* =====================================================
+          CURRENT ROLE
+      ====================================================== */}
 
-          <p className="mt-1 text-sm font-semibold text-blue-400">
-            {displayRole}
-          </p>
+      <div className="border-b border-white/10 px-6 py-4">
 
-        </div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-600">
+          Current Role
+        </p>
 
+        <p className="mt-1 text-sm font-semibold text-blue-400">
+          {displayRole}
+        </p>
 
-        {/* =====================================================
-            NAVIGATION
-        ====================================================== */}
+      </div>
 
-        <nav className="flex-1 overflow-y-auto px-4 py-5">
+      {/* =====================================================
+          NAVIGATION
+      ====================================================== */}
 
-          {currentMenu.map((section) => (
+      <nav className="flex-1 overflow-y-auto px-4 py-5">
 
-            <div
-              key={section.section}
-              className="mb-7"
-            >
+        {currentMenu.map((section) => (
 
-              <p className="mb-3 px-3 text-[11px] font-semibold tracking-widest text-slate-600">
-                {section.section}
-              </p>
+          <div
+            key={section.section}
+            className="mb-7"
+          >
 
-              <div className="space-y-1">
+            <p className="mb-3 px-3 text-[11px] font-semibold tracking-widest text-slate-600">
+              {section.section}
+            </p>
 
-                {section.items.map((item) => {
+            <div className="space-y-1">
 
-                  const active =
-                    pathname === item.href ||
-                    (
-                      item.href !== dashboardHref &&
-                      pathname.startsWith(item.href + "/")
-                    );
+              {section.items.map((item) => {
 
-                  return (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      onClick={handleNavigation}
-                      className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${
-                        active
-                          ? "bg-blue-600/15 text-blue-400"
-                          : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
-                      }`}
-                    >
-
-                      <span className="flex w-5 shrink-0 justify-center text-sm">
-                        {item.icon}
-                      </span>
-
-                      <span>
-                        {item.name}
-                      </span>
-
-                    </Link>
+                const active =
+                  pathname === item.href ||
+                  (
+                    item.href !== dashboardHref &&
+                    pathname.startsWith(
+                      item.href + "/"
+                    )
                   );
 
-                })}
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${
+                      active
+                        ? "bg-blue-600/15 text-blue-400"
+                        : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+                    }`}
+                  >
 
-              </div>
+                    <span className="flex w-5 shrink-0 justify-center text-sm">
+                      {item.icon}
+                    </span>
+
+                    <span>
+                      {item.name}
+                    </span>
+
+                  </Link>
+                );
+
+              })}
 
             </div>
 
-          ))}
+          </div>
 
-        </nav>
+        ))}
 
+      </nav>
 
-        {/* =====================================================
-            ACCOUNT
-        ====================================================== */}
+      {/* =====================================================
+          ACCOUNT
+      ====================================================== */}
 
-        <div className="border-t border-white/10 p-4">
+      <div className="border-t border-white/10 p-4">
 
-          {/* Profile */}
+        {/* Profile */}
 
-          <Link
-            href={profileHref}
-            onClick={handleNavigation}
-            className="mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-white"
-          >
+        <Link
+          href={profileHref}
+          className="mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-white"
+        >
 
-            <span className="flex w-5 justify-center">
-              ◯
-            </span>
+          <span className="flex w-5 justify-center">
+            ◯
+          </span>
 
-            Profile
+          Profile
 
-          </Link>
+        </Link>
 
+        {/* Settings */}
 
-          {/* Settings */}
+        <Link
+          href={settingsHref}
+          className="mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-white"
+        >
 
-          <Link
-            href={settingsHref}
-            onClick={handleNavigation}
-            className="mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-white"
-          >
+          <span className="flex w-5 justify-center">
+            ⚙
+          </span>
 
-            <span className="flex w-5 justify-center">
-              ⚙
-            </span>
+          Settings
 
-            Settings
+        </Link>
 
-          </Link>
+        {/* Logout */}
 
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-red-400 transition hover:bg-red-500/10"
+        >
 
-          {/* Logout */}
+          <span className="flex w-5 justify-center">
+            ↪
+          </span>
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-red-400 transition hover:bg-red-500/10"
-          >
+          Logout
 
-            <span className="flex w-5 justify-center">
-              ↪
-            </span>
+        </button>
 
-            Logout
+      </div>
 
-          </button>
-
-        </div>
-
-      </aside>
-    </>
+    </aside>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -10,14 +10,140 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
   const [showPassword, setShowPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  const [checkingSession, setCheckingSession] = useState(true);
+
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+
+  // =====================================================
+  // DASHBOARD ROUTE
+  // =====================================================
+
+  function getDashboardPath(role) {
+    switch (role?.trim().toUpperCase()) {
+      case "ADMIN":
+        return "/admin/dashboard";
+
+      case "ORGANIZER":
+        return "/organizer/dashboard";
+
+      case "COMPETITION_MEMBER":
+        return "/competition-member/dashboard";
+
+      case "VOLUNTEER":
+        return "/volunteer/dashboard";
+
+      case "PARTICIPANT":
+        return "/participant/dashboard";
+
+      default:
+        return null;
+    }
+  }
+
+  // =====================================================
+  // CHECK EXISTING LOGIN SESSION
+  // =====================================================
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function checkExistingSession() {
+      const supabase = createClient();
+
+      try {
+        // If user came through an invitation,
+        // allow the login/invitation flow to continue.
+        const pendingInvitation = localStorage.getItem(
+          "eventnest_pending_invitation"
+        );
+
+        if (pendingInvitation) {
+          if (mounted) {
+            setCheckingSession(false);
+          }
+          return;
+        }
+
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.error("SESSION CHECK ERROR:", sessionError);
+
+          if (mounted) {
+            setCheckingSession(false);
+          }
+
+          return;
+        }
+
+        if (!session?.user) {
+          if (mounted) {
+            setCheckingSession(false);
+          }
+
+          return;
+        }
+
+        const { data: profile, error: profileError } =
+          await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", session.user.id)
+            .single();
+
+        if (profileError || !profile?.role) {
+          console.error(
+            "EXISTING SESSION PROFILE ERROR:",
+            profileError
+          );
+
+          if (mounted) {
+            setCheckingSession(false);
+          }
+
+          return;
+        }
+
+        const dashboardPath = getDashboardPath(profile.role);
+
+        if (!dashboardPath) {
+          if (mounted) {
+            setCheckingSession(false);
+          }
+
+          return;
+        }
+
+        // User is already logged in.
+        // Do not show login page again.
+        router.replace(dashboardPath);
+      } catch (error) {
+        console.error(
+          "Existing session check error:",
+          error
+        );
+
+        if (mounted) {
+          setCheckingSession(false);
+        }
+      }
+    }
+
+    checkExistingSession();
+
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
 
   // =====================================================
   // EMAIL + PASSWORD LOGIN
@@ -70,10 +196,11 @@ export default function LoginPage() {
       const {
         data: authData,
         error: loginError,
-      } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
+      } =
+        await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
 
       // =================================================
       // LOGIN ERROR
@@ -82,16 +209,21 @@ export default function LoginPage() {
       if (loginError) {
         console.error("LOGIN ERROR:", loginError);
 
-        const message = loginError.message.toLowerCase();
+        const message =
+          loginError.message.toLowerCase();
 
         if (
-          message.includes("invalid login credentials") ||
+          message.includes(
+            "invalid login credentials"
+          ) ||
           message.includes("invalid credentials")
         ) {
           setErrorMessage(
             "No account found with these login details, or the password is incorrect. Please check your details or create an account."
           );
-        } else if (message.includes("email not confirmed")) {
+        } else if (
+          message.includes("email not confirmed")
+        ) {
           setErrorMessage(
             "Please verify your email address before signing in."
           );
@@ -117,7 +249,7 @@ export default function LoginPage() {
       }
 
       // =================================================
-      // GET USER PROFILE + ROLE
+      // GET PROFILE + ROLE
       // =================================================
 
       const {
@@ -130,7 +262,10 @@ export default function LoginPage() {
         .single();
 
       if (profileError) {
-        console.error("PROFILE ERROR:", profileError);
+        console.error(
+          "PROFILE ERROR:",
+          profileError
+        );
 
         await supabase.auth.signOut();
 
@@ -155,7 +290,8 @@ export default function LoginPage() {
         return;
       }
 
-      const role = profile.role.trim().toUpperCase();
+      const role =
+        profile.role.trim().toUpperCase();
 
       const allowedRoles = [
         "ADMIN",
@@ -166,7 +302,10 @@ export default function LoginPage() {
       ];
 
       if (!allowedRoles.includes(role)) {
-        console.error("UNKNOWN ROLE:", profile.role);
+        console.error(
+          "UNKNOWN ROLE:",
+          profile.role
+        );
 
         await supabase.auth.signOut();
 
@@ -181,31 +320,38 @@ export default function LoginPage() {
       // COMPLETE PENDING INVITATION
       // =================================================
 
-      const pendingInvitationRaw = localStorage.getItem(
-        "eventnest_pending_invitation"
-      );
+      const pendingInvitationRaw =
+        localStorage.getItem(
+          "eventnest_pending_invitation"
+        );
 
       if (pendingInvitationRaw) {
         try {
-          const pendingInvitation = JSON.parse(
-            pendingInvitationRaw
-          );
+          const pendingInvitation =
+            JSON.parse(
+              pendingInvitationRaw
+            );
 
           const invitationToken =
-            typeof pendingInvitation?.token === "string"
+            typeof pendingInvitation?.token ===
+            "string"
               ? pendingInvitation.token.trim()
               : "";
 
           const invitationType =
-            typeof pendingInvitation?.type === "string"
+            typeof pendingInvitation?.type ===
+            "string"
               ? pendingInvitation.type.trim()
               : "";
 
           // -------------------------------------------------
-          // INVALID LOCAL STORAGE DATA
+          // INVALID INVITATION
           // -------------------------------------------------
 
-          if (!invitationToken || !invitationType) {
+          if (
+            !invitationToken ||
+            !invitationType
+          ) {
             console.warn(
               "Invalid pending invitation data found. Removing it."
             );
@@ -217,22 +363,29 @@ export default function LoginPage() {
             let invitationEndpoint = null;
             let dashboardPath = null;
 
-            // -----------------------------------------------
+            // -------------------------------------------------
             // ORGANIZER INVITATION
-            // -----------------------------------------------
+            // -------------------------------------------------
 
-            if (invitationType === "organizer") {
+            if (
+              invitationType ===
+              "organizer"
+            ) {
               invitationEndpoint =
                 "/api/organizer-invitations/accept";
 
-              dashboardPath = "/organizer/dashboard";
+              dashboardPath =
+                "/organizer/dashboard";
             }
 
-            // -----------------------------------------------
+            // -------------------------------------------------
             // COMPETITION MEMBER INVITATION
-            // -----------------------------------------------
+            // -------------------------------------------------
 
-            if (invitationType === "competition-member") {
+            if (
+              invitationType ===
+              "competition-member"
+            ) {
               invitationEndpoint =
                 "/api/competition-member-invitations/accept";
 
@@ -240,11 +393,14 @@ export default function LoginPage() {
                 "/competition-member/dashboard";
             }
 
-            // -----------------------------------------------
-            // UNKNOWN INVITATION TYPE
-            // -----------------------------------------------
+            // -------------------------------------------------
+            // UNKNOWN INVITATION
+            // -------------------------------------------------
 
-            if (!invitationEndpoint || !dashboardPath) {
+            if (
+              !invitationEndpoint ||
+              !dashboardPath
+            ) {
               console.warn(
                 "Unknown invitation type. Removing pending invitation."
               );
@@ -253,26 +409,25 @@ export default function LoginPage() {
                 "eventnest_pending_invitation"
               );
             } else {
-              // ---------------------------------------------
-              // ACCEPT INVITATION
-              // ---------------------------------------------
-
               setSuccessMessage(
                 "Login successful! Completing your invitation..."
               );
 
-              const invitationResponse = await fetch(
-                invitationEndpoint,
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    token: invitationToken,
-                  }),
-                }
-              );
+              const invitationResponse =
+                await fetch(
+                  invitationEndpoint,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type":
+                        "application/json",
+                    },
+                    body: JSON.stringify({
+                      token:
+                        invitationToken,
+                    }),
+                  }
+                );
 
               let invitationData = {};
 
@@ -286,19 +441,18 @@ export default function LoginPage() {
                 );
               }
 
-              // ---------------------------------------------
+              // -------------------------------------------------
               // INVITATION FAILED
-              // ---------------------------------------------
+              // -------------------------------------------------
 
-              if (!invitationResponse.ok) {
+              if (
+                !invitationResponse.ok
+              ) {
                 console.error(
                   "Pending invitation error:",
                   invitationData
                 );
 
-                // IMPORTANT:
-                // Remove the stale/invalid invitation so
-                // the browser does not retry it on every login.
                 localStorage.removeItem(
                   "eventnest_pending_invitation"
                 );
@@ -313,9 +467,9 @@ export default function LoginPage() {
                 return;
               }
 
-              // ---------------------------------------------
+              // -------------------------------------------------
               // INVITATION COMPLETED
-              // ---------------------------------------------
+              // -------------------------------------------------
 
               localStorage.removeItem(
                 "eventnest_pending_invitation"
@@ -325,9 +479,12 @@ export default function LoginPage() {
                 "Invitation accepted! Redirecting..."
               );
 
+              // replace prevents login page
+              // from remaining in browser history.
               setTimeout(() => {
-                router.push(dashboardPath);
-                router.refresh();
+                router.replace(
+                  dashboardPath
+                );
               }, 500);
 
               return;
@@ -339,9 +496,6 @@ export default function LoginPage() {
             error
           );
 
-          // IMPORTANT:
-          // Remove corrupted invitation data so it cannot
-          // keep breaking future logins.
           localStorage.removeItem(
             "eventnest_pending_invitation"
           );
@@ -360,41 +514,28 @@ export default function LoginPage() {
       // NORMAL ROLE-BASED LOGIN
       // =================================================
 
+      const dashboardPath =
+        getDashboardPath(role);
+
+      if (!dashboardPath) {
+        await supabase.auth.signOut();
+
+        setErrorMessage(
+          "Your account role could not be recognized."
+        );
+
+        return;
+      }
+
       setSuccessMessage(
         "Login successful! Redirecting..."
       );
 
-      switch (role) {
-        case "ADMIN":
-          router.push("/admin/dashboard");
-          break;
-
-        case "ORGANIZER":
-          router.push("/organizer/dashboard");
-          break;
-
-        case "COMPETITION_MEMBER":
-          router.push(
-            "/competition-member/dashboard"
-          );
-          break;
-
-        case "VOLUNTEER":
-          router.push("/volunteer/dashboard");
-          break;
-
-        case "PARTICIPANT":
-          router.push("/participant/dashboard");
-          break;
-
-        default:
-          setErrorMessage(
-            "Your account role could not be recognized."
-          );
-          return;
-      }
-
-      router.refresh();
+      // IMPORTANT:
+      // replace() instead of push()
+      // Login will not remain unnecessarily
+      // in browser history.
+      router.replace(dashboardPath);
     } catch (error) {
       console.error(
         "Unexpected login error:",
@@ -418,7 +559,6 @@ export default function LoginPage() {
 
     setErrorMessage("");
     setSuccessMessage("");
-
     setGoogleLoading(true);
 
     try {
@@ -459,6 +599,28 @@ export default function LoginPage() {
     }
   }
 
+  // =====================================================
+  // EXISTING SESSION LOADING SCREEN
+  // =====================================================
+
+  if (checkingSession) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#020817] text-white">
+        <div className="text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 text-xl font-bold">
+            E
+          </div>
+
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-blue-500 mx-auto" />
+
+          <p className="mt-4 text-sm text-slate-400">
+            Checking your session...
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#020817] text-white">
       <div className="grid min-h-screen lg:grid-cols-2">
@@ -489,7 +651,6 @@ export default function LoginPage() {
               href="/"
               className="flex items-center gap-3"
             >
-
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 text-xl font-bold shadow-lg shadow-blue-500/20">
                 E
               </div>
@@ -503,7 +664,6 @@ export default function LoginPage() {
                   Smart Event Management
                 </p>
               </div>
-
             </Link>
 
             {/* MAIN CONTENT */}
@@ -516,22 +676,20 @@ export default function LoginPage() {
               </div>
 
               <h1 className="text-5xl font-bold leading-tight xl:text-6xl">
-
                 One platform.
                 <br />
-
                 Every event.
                 <br />
 
                 <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
                   Smarter management.
                 </span>
-
               </h1>
 
               <p className="mt-6 max-w-lg text-lg leading-8 text-slate-400">
-                Manage competitions, participants, volunteers,
-                tickets and event operations from one intelligent
+                Manage competitions, participants,
+                volunteers, tickets and event
+                operations from one intelligent
                 platform.
               </p>
 
@@ -574,7 +732,6 @@ export default function LoginPage() {
             </p>
 
           </div>
-
         </section>
 
         {/* =================================================
@@ -595,7 +752,6 @@ export default function LoginPage() {
                 href="/"
                 className="flex items-center gap-3"
               >
-
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 text-xl font-bold">
                   E
                 </div>
@@ -609,7 +765,6 @@ export default function LoginPage() {
                     Smart Event Management
                   </p>
                 </div>
-
               </Link>
 
             </div>

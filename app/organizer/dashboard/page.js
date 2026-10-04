@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-
-import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import { createClient } from "@/lib/supabase/client";
 
 export default function OrganizerDashboard() {
@@ -72,6 +70,7 @@ export default function OrganizerDashboard() {
       setEvents(assignedEvents);
     } catch (err) {
       console.error("Organizer dashboard error:", err);
+
       setError(
         err?.message || "Unable to load your organizer dashboard."
       );
@@ -81,7 +80,7 @@ export default function OrganizerDashboard() {
   }
 
   return (
-    <DashboardLayout title="Organizer Dashboard">
+    <>
       {/* Page Header */}
       <div className="mb-8">
         <p className="text-sm font-semibold uppercase tracking-widest text-blue-400">
@@ -93,8 +92,8 @@ export default function OrganizerDashboard() {
         </h1>
 
         <p className="mt-3 max-w-2xl text-slate-400">
-          Manage your assigned events, competitions, participants, and
-          volunteers from one place.
+          Manage your assigned events, competitions, and participants
+          from one place.
         </p>
       </div>
 
@@ -106,7 +105,8 @@ export default function OrganizerDashboard() {
       )}
 
       {/* Organizer Overview */}
-      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+
         <DashboardCard
           title="My Events"
           value={loading ? "..." : events.length}
@@ -128,19 +128,16 @@ export default function OrganizerDashboard() {
           icon="👥"
         />
 
-        <DashboardCard
-          title="Volunteers"
-          value="—"
-          description="Volunteers helping with your events"
-          icon="🤝"
-        />
       </div>
 
       {/* Main Content */}
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
+
         {/* My Events */}
         <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6 lg:col-span-2">
+
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+
             <div>
               <h2 className="text-xl font-bold text-white">
                 My Events
@@ -157,11 +154,15 @@ export default function OrganizerDashboard() {
             >
               View All
             </Link>
+
           </div>
 
           {loading ? (
             <div className="mt-6 rounded-xl border border-dashed border-white/10 p-8 text-center">
-              <div className="text-3xl">⏳</div>
+
+              <div className="text-3xl">
+                ⏳
+              </div>
 
               <h3 className="mt-3 font-semibold text-white">
                 Loading events...
@@ -170,10 +171,14 @@ export default function OrganizerDashboard() {
               <p className="mt-2 text-sm text-slate-500">
                 Fetching your assigned events.
               </p>
+
             </div>
           ) : events.length === 0 ? (
             <div className="mt-6 rounded-xl border border-dashed border-white/10 p-8 text-center">
-              <div className="text-3xl">📅</div>
+
+              <div className="text-3xl">
+                📅
+              </div>
 
               <h3 className="mt-3 font-semibold text-white">
                 No events assigned
@@ -183,21 +188,26 @@ export default function OrganizerDashboard() {
                 Once an administrator assigns an event to you, it will
                 appear here.
               </p>
+
             </div>
           ) : (
             <div className="mt-6 space-y-4">
+
               {events.slice(0, 3).map((event) => (
                 <EventPreview
                   key={event.id}
                   event={event}
                 />
               ))}
+
             </div>
           )}
+
         </section>
 
         {/* Quick Actions */}
         <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
+
           <h2 className="text-xl font-bold text-white">
             Quick Actions
           </h2>
@@ -207,6 +217,7 @@ export default function OrganizerDashboard() {
           </p>
 
           <div className="mt-6 space-y-3">
+
             <QuickAction
               icon="🏆"
               title="Create Competition"
@@ -231,18 +242,17 @@ export default function OrganizerDashboard() {
               href="/organizer/competitions"
             />
 
-            <QuickAction
-              icon="🤝"
-              title="Manage Volunteers"
-              href="/organizer/competitions"
-            />
           </div>
+
         </section>
+
       </div>
 
       {/* Competitions */}
       <section className="mt-8 rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
+
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+
           <div>
             <h2 className="text-xl font-bold text-white">
               My Competitions
@@ -259,10 +269,14 @@ export default function OrganizerDashboard() {
           >
             Manage
           </Link>
+
         </div>
 
         <div className="mt-6 rounded-xl border border-dashed border-white/10 p-8 text-center">
-          <div className="text-3xl">🏆</div>
+
+          <div className="text-3xl">
+            🏆
+          </div>
 
           <h3 className="mt-3 font-semibold text-white">
             Competition management
@@ -272,11 +286,14 @@ export default function OrganizerDashboard() {
             Your competitions will appear here once the competition
             module is connected to your assigned events.
           </p>
+
         </div>
+
       </section>
 
       {/* Organizer Workflow */}
       <section className="mt-8 rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
+
         <h2 className="text-xl font-bold text-white">
           Organizer Workflow
         </h2>
@@ -286,6 +303,7 @@ export default function OrganizerDashboard() {
         </p>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
           <WorkflowStep
             number="01"
             title="Receive Event"
@@ -307,13 +325,20 @@ export default function OrganizerDashboard() {
           <WorkflowStep
             number="04"
             title="Manage Event"
-            description="Manage participants, volunteers, schedules, and event activities."
+            description="Manage participants, schedules, and event activities."
           />
+
         </div>
+
       </section>
-    </DashboardLayout>
+    </>
   );
 }
+
+
+/* =====================================================
+   DASHBOARD CARD
+===================================================== */
 
 function DashboardCard({
   title,
@@ -323,7 +348,9 @@ function DashboardCard({
 }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition hover:-translate-y-1 hover:bg-white/[0.07]">
+
       <div className="flex items-center justify-between gap-3">
+
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500/10 text-xl">
           {icon}
         </div>
@@ -331,6 +358,7 @@ function DashboardCard({
         <p className="text-2xl font-bold text-white">
           {value}
         </p>
+
       </div>
 
       <p className="mt-4 text-sm font-semibold text-white">
@@ -340,20 +368,30 @@ function DashboardCard({
       <p className="mt-1 text-xs leading-5 text-slate-500">
         {description}
       </p>
+
     </div>
   );
 }
 
+
+/* =====================================================
+   EVENT PREVIEW
+===================================================== */
+
 function EventPreview({ event }) {
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-white/10 bg-[#0b1224] p-4 sm:flex-row sm:items-center sm:justify-between">
+
       <div className="min-w-0">
+
         <div className="flex flex-wrap items-center gap-3">
+
           <h3 className="text-lg font-semibold text-white">
             {event.name}
           </h3>
 
           <StatusBadge status={event.status} />
+
         </div>
 
         <p className="mt-2 line-clamp-2 text-sm text-slate-400">
@@ -361,12 +399,21 @@ function EventPreview({ event }) {
         </p>
 
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-500">
-          <span>📅 {formatDate(event.start_date)}</span>
 
-          <span>→ {formatDate(event.end_date)}</span>
+          <span>
+            📅 {formatDate(event.start_date)}
+          </span>
 
-          <span>📍 {event.venue || "Venue not specified"}</span>
+          <span>
+            → {formatDate(event.end_date)}
+          </span>
+
+          <span>
+            📍 {event.venue || "Venue not specified"}
+          </span>
+
         </div>
+
       </div>
 
       <Link
@@ -375,9 +422,15 @@ function EventPreview({ event }) {
       >
         Manage Event
       </Link>
+
     </div>
   );
 }
+
+
+/* =====================================================
+   QUICK ACTION
+===================================================== */
 
 function QuickAction({
   icon,
@@ -389,7 +442,9 @@ function QuickAction({
       href={href}
       className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-blue-500/30 hover:bg-blue-500/5"
     >
-      <span className="text-xl">{icon}</span>
+      <span className="text-xl">
+        {icon}
+      </span>
 
       <span className="text-sm font-medium text-slate-200">
         {title}
@@ -398,6 +453,11 @@ function QuickAction({
   );
 }
 
+
+/* =====================================================
+   WORKFLOW STEP
+===================================================== */
+
 function WorkflowStep({
   number,
   title,
@@ -405,6 +465,7 @@ function WorkflowStep({
 }) {
   return (
     <div className="rounded-xl border border-white/10 bg-[#0b1b35] p-5">
+
       <p className="text-xs font-bold tracking-widest text-blue-400">
         {number}
       </p>
@@ -416,9 +477,15 @@ function WorkflowStep({
       <p className="mt-1 text-sm leading-5 text-slate-500">
         {description}
       </p>
+
     </div>
   );
 }
+
+
+/* =====================================================
+   STATUS BADGE
+===================================================== */
 
 function StatusBadge({ status }) {
   const styles = {
@@ -435,13 +502,20 @@ function StatusBadge({ status }) {
         styles[status] || "bg-white/10 text-slate-400"
       }`}
     >
-      {status}
+      {status || "UNKNOWN"}
     </span>
   );
 }
 
+
+/* =====================================================
+   DATE FORMAT
+===================================================== */
+
 function formatDate(date) {
-  if (!date) return "Date not specified";
+  if (!date) {
+    return "Date not specified";
+  }
 
   return new Date(date).toLocaleDateString("en-IN", {
     day: "numeric",
