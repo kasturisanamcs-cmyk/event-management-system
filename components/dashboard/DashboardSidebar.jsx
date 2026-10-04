@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+
 import { createClient } from "@/lib/supabase/client";
 
 const menus = {
@@ -71,6 +72,11 @@ const menus = {
           name: "Results",
           href: "/dashboard/results",
           icon: "◆",
+        },
+        {
+          name: "Schedule",
+          href: "/dashboard/schedule",
+          icon: "◷",
         },
       ],
     },
@@ -260,12 +266,21 @@ const menus = {
   ],
 };
 
-export default function DashboardSidebar() {
+export default function DashboardSidebar({
+  mobileOpen = false,
+  onClose = () => {},
+}) {
   const pathname = usePathname();
   const router = useRouter();
 
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  /*
+   * ---------------------------------------------------------
+   * LOAD USER ROLE
+   * ---------------------------------------------------------
+   */
 
   useEffect(() => {
     let mounted = true;
@@ -297,7 +312,10 @@ export default function DashboardSidebar() {
           .single();
 
         if (profileError) {
-          console.error("Profile error:", profileError);
+          console.error(
+            "Profile error:",
+            profileError
+          );
 
           if (mounted) {
             setRole(null);
@@ -335,6 +353,12 @@ export default function DashboardSidebar() {
     };
   }, [router]);
 
+  /*
+   * ---------------------------------------------------------
+   * LOGOUT
+   * ---------------------------------------------------------
+   */
+
   async function handleLogout() {
     const supabase = createClient();
 
@@ -346,18 +370,20 @@ export default function DashboardSidebar() {
         "Logout failed:",
         error
       );
+
       return;
     }
+
+    onClose();
 
     router.replace("/login");
     router.refresh();
   }
 
   /*
-   * The pathname only controls which menu
-   * should be visually displayed.
-   *
-   * It does NOT redirect the user.
+   * ---------------------------------------------------------
+   * ROLE SELECTION
+   * ---------------------------------------------------------
    */
 
   let currentRole = role;
@@ -375,13 +401,7 @@ export default function DashboardSidebar() {
   }
 
   /*
-   * IMPORTANT:
-   *
-   * /dashboard/* is shared by ADMIN and ORGANIZER.
-   *
-   * Therefore:
-   * ADMIN + /dashboard/* → ADMIN menu
-   * ORGANIZER + /dashboard/* → ORGANIZER menu
+   * /dashboard is shared by ADMIN and ORGANIZER.
    */
 
   if (
@@ -398,11 +418,6 @@ export default function DashboardSidebar() {
     currentRole = "ADMIN";
   }
 
-  /*
-   * If admin is specifically on /admin/*
-   * keep ADMIN menu.
-   */
-
   if (
     role === "ADMIN" &&
     pathname.startsWith("/admin")
@@ -418,7 +433,9 @@ export default function DashboardSidebar() {
     : currentRole || "USER";
 
   /*
-   * CORRECT DASHBOARD ROUTES
+   * ---------------------------------------------------------
+   * DASHBOARD ROUTES
+   * ---------------------------------------------------------
    */
 
   const dashboardHref =
@@ -442,170 +459,222 @@ export default function DashboardSidebar() {
       ? "/participant/settings"
       : "/dashboard/settings";
 
+  /*
+   * ---------------------------------------------------------
+   * MOBILE + DESKTOP SIDEBAR
+   * ---------------------------------------------------------
+   */
+
   return (
-    <aside className="flex h-screen w-72 shrink-0 flex-col border-r border-white/10 bg-[#050b18] text-white">
+    <>
+      {/* MOBILE BACKDROP */}
 
-      {/* =====================================================
-          LOGO
-      ====================================================== */}
-
-      <div className="border-b border-white/10 px-6 py-5">
-
-        <Link
-          href={dashboardHref}
-          className="flex items-center gap-3"
-        >
-
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 font-bold text-white">
-            E
-          </div>
-
-          <div>
-            <p className="font-bold text-white">
-              EventNest
-            </p>
-
-            <p className="text-xs text-slate-500">
-              Smart Event Management
-            </p>
-          </div>
-
-        </Link>
-
-      </div>
-
-      {/* =====================================================
-          CURRENT ROLE
-      ====================================================== */}
-
-      <div className="border-b border-white/10 px-6 py-4">
-
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-600">
-          Current Role
-        </p>
-
-        <p className="mt-1 text-sm font-semibold text-blue-400">
-          {displayRole}
-        </p>
-
-      </div>
-
-      {/* =====================================================
-          NAVIGATION
-      ====================================================== */}
-
-      <nav className="flex-1 overflow-y-auto px-4 py-5">
-
-        {currentMenu.map((section) => (
-
-          <div
-            key={section.section}
-            className="mb-7"
-          >
-
-            <p className="mb-3 px-3 text-[11px] font-semibold tracking-widest text-slate-600">
-              {section.section}
-            </p>
-
-            <div className="space-y-1">
-
-              {section.items.map((item) => {
-
-                const active =
-                  pathname === item.href ||
-                  (
-                    item.href !== dashboardHref &&
-                    pathname.startsWith(
-                      item.href + "/"
-                    )
-                  );
-
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${
-                      active
-                        ? "bg-blue-600/15 text-blue-400"
-                        : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
-                    }`}
-                  >
-
-                    <span className="flex w-5 shrink-0 justify-center text-sm">
-                      {item.icon}
-                    </span>
-
-                    <span>
-                      {item.name}
-                    </span>
-
-                  </Link>
-                );
-
-              })}
-
-            </div>
-
-          </div>
-
-        ))}
-
-      </nav>
-
-      {/* =====================================================
-          ACCOUNT
-      ====================================================== */}
-
-      <div className="border-t border-white/10 p-4">
-
-        {/* Profile */}
-
-        <Link
-          href={profileHref}
-          className="mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-white"
-        >
-
-          <span className="flex w-5 justify-center">
-            ◯
-          </span>
-
-          Profile
-
-        </Link>
-
-        {/* Settings */}
-
-        <Link
-          href={settingsHref}
-          className="mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-white"
-        >
-
-          <span className="flex w-5 justify-center">
-            ⚙
-          </span>
-
-          Settings
-
-        </Link>
-
-        {/* Logout */}
-
+      {mobileOpen && (
         <button
           type="button"
-          onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-red-400 transition hover:bg-red-500/10"
-        >
+          aria-label="Close navigation menu"
+          onClick={onClose}
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+        />
+      )}
 
-          <span className="flex w-5 justify-center">
-            ↪
-          </span>
+      {/* SIDEBAR */}
 
-          Logout
+      <aside
+        className={`
+          fixed
+          inset-y-0
+          left-0
+          z-50
+          flex
+          h-screen
+          w-[280px]
+          shrink-0
+          flex-col
+          border-r
+          border-white/10
+          bg-[#050b18]
+          text-white
+          shadow-2xl
+          transition-transform
+          duration-300
+          ease-out
 
-        </button>
+          lg:sticky
+          lg:top-0
+          lg:z-30
+          lg:w-72
+          lg:translate-x-0
+          lg:shadow-none
 
-      </div>
+          ${
+            mobileOpen
+              ? "translate-x-0"
+              : "-translate-x-full"
+          }
+        `}
+      >
+        {/* =================================================
+            LOGO
+        ================================================== */}
 
-    </aside>
+        <div className="relative shrink-0 border-b border-white/10 px-5 py-5 sm:px-6">
+          <Link
+            href={dashboardHref}
+            onClick={onClose}
+            className="flex min-w-0 items-center gap-3"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 font-bold text-white">
+              E
+            </div>
+
+            <div className="min-w-0">
+              <p className="font-bold text-white">
+                EventNest
+              </p>
+
+              <p className="truncate text-xs text-slate-500">
+                Smart Event Management
+              </p>
+            </div>
+          </Link>
+
+          {/* MOBILE CLOSE BUTTON */}
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close navigation menu"
+            className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white lg:hidden"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* =================================================
+            CURRENT ROLE
+        ================================================== */}
+
+        <div className="shrink-0 border-b border-white/10 px-5 py-4 sm:px-6">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-600">
+            Current Role
+          </p>
+
+          <p className="mt-1 text-sm font-semibold text-blue-400">
+            {displayRole}
+          </p>
+        </div>
+
+        {/* =================================================
+            NAVIGATION
+        ================================================== */}
+
+        <nav className="flex-1 overflow-y-auto overscroll-contain px-3 py-5 sm:px-4">
+          {currentMenu.map((section) => (
+            <div
+              key={section.section}
+              className="mb-7"
+            >
+              <p className="mb-3 px-3 text-[11px] font-semibold tracking-widest text-slate-600">
+                {section.section}
+              </p>
+
+              <div className="space-y-1">
+                {section.items.map((item) => {
+                  const active =
+                    pathname === item.href ||
+                    (item.href !== dashboardHref &&
+                      pathname.startsWith(
+                        item.href + "/"
+                      ));
+
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      onClick={onClose}
+                      className={`
+                        flex
+                        min-h-11
+                        items-center
+                        gap-3
+                        rounded-xl
+                        px-3
+                        py-3
+                        text-sm
+                        transition
+
+                        ${
+                          active
+                            ? "bg-blue-600/15 text-blue-400"
+                            : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+                        }
+                      `}
+                    >
+                      <span className="flex w-5 shrink-0 justify-center text-sm">
+                        {item.icon}
+                      </span>
+
+                      <span className="min-w-0 truncate">
+                        {item.name}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        {/* =================================================
+            ACCOUNT
+        ================================================== */}
+
+        <div className="shrink-0 border-t border-white/10 p-3 sm:p-4">
+
+          {/* PROFILE */}
+
+          <Link
+            href={profileHref}
+            onClick={onClose}
+            className="mb-1 flex min-h-11 items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-white"
+          >
+            <span className="flex w-5 justify-center">
+              ◯
+            </span>
+
+            Profile
+          </Link>
+
+          {/* SETTINGS */}
+
+          <Link
+            href={settingsHref}
+            onClick={onClose}
+            className="mb-1 flex min-h-11 items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-white"
+          >
+            <span className="flex w-5 justify-center">
+              ⚙
+            </span>
+
+            Settings
+          </Link>
+
+          {/* LOGOUT */}
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-red-400 transition hover:bg-red-500/10"
+          >
+            <span className="flex w-5 justify-center">
+              ↪
+            </span>
+
+            Logout
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }
