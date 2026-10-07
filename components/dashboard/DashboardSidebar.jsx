@@ -39,7 +39,7 @@ const menus = {
         },
         {
           name: "Participants",
-          href: "/dashboard/participants",
+          href: "/competition-member/participants",
           icon: "●",
         },
         {
@@ -58,21 +58,13 @@ const menus = {
           href: "/dashboard/payments",
           icon: "₹",
         },
-        {
-          name: "Tickets & QR",
-          href: "/dashboard/tickets",
-          icon: "▣",
-        },
+        
         {
           name: "Announcements",
           href: "/dashboard/announcements",
           icon: "◇",
         },
-        {
-          name: "Results",
-          href: "/dashboard/results",
-          icon: "◆",
-        },
+        
         {
           name: "Schedule",
           href: "/dashboard/schedule",
@@ -129,24 +121,9 @@ const menus = {
       section: "OPERATIONS",
       items: [
         {
-          name: "Payments",
-          href: "/dashboard/payments",
-          icon: "₹",
-        },
-        {
-          name: "Tickets & QR",
-          href: "/dashboard/tickets",
-          icon: "▣",
-        },
-        {
           name: "Announcements",
           href: "/dashboard/announcements",
           icon: "◇",
-        },
-        {
-          name: "Results",
-          href: "/dashboard/results",
-          icon: "◆",
         },
       ],
     },
@@ -312,10 +289,7 @@ export default function DashboardSidebar({
           .single();
 
         if (profileError) {
-          console.error(
-            "Profile error:",
-            profileError
-          );
+          console.error("Profile error:", profileError);
 
           if (mounted) {
             setRole(null);
@@ -362,8 +336,7 @@ export default function DashboardSidebar({
   async function handleLogout() {
     const supabase = createClient();
 
-    const { error } =
-      await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
 
     if (error) {
       console.error(
@@ -390,9 +363,7 @@ export default function DashboardSidebar({
 
   if (pathname.startsWith("/participant")) {
     currentRole = "PARTICIPANT";
-  } else if (
-    pathname.startsWith("/organizer")
-  ) {
+  } else if (pathname.startsWith("/organizer")) {
     currentRole = "ORGANIZER";
   } else if (
     pathname.startsWith("/competition-member")
@@ -425,8 +396,7 @@ export default function DashboardSidebar({
     currentRole = "ADMIN";
   }
 
-  const currentMenu =
-    menus[currentRole] || [];
+  const currentMenu = menus[currentRole] || [];
 
   const displayRole = loading
     ? "Loading..."

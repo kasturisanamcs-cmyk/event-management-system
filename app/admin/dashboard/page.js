@@ -85,25 +85,21 @@ export default function AdminDashboardPage() {
       ========================================= */
 
       const {
-        count: organizers,
-        error: organizerError,
-      } = await supabase
-        .from("profiles")
-        .select("id", {
-          count: "exact",
-          head: true,
-        })
-        .eq("role", "ORGANIZER");
+  data: organizerCountData,
+  error: organizerError,
+} = await supabase.rpc(
+  "get_eventnest_admin_organizer_count"
+);
 
-      if (organizerError) {
-        console.error(
-          "Organizer count error:",
-          organizerError
-        );
-      } else {
-        setOrganizerCount(organizers || 0);
-      }
-
+if (organizerError) {
+  console.error(
+    "Organizer count error:",
+    organizerError
+  );
+  setOrganizerCount(0);
+} else {
+  setOrganizerCount(Number(organizerCountData) || 0);
+}
       /* =========================================
          LOAD COMPETITIONS
       ========================================= */

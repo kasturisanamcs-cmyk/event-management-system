@@ -4,113 +4,368 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request) {
   try {
+    // --------------------------------------------------
+    // 1. Check logged-in participant
+    // --------------------------------------------------
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-    }
-
-    const { registrationId } = await request.json();
-    if (!registrationId) {
-      return NextResponse.json({ error: "Registration ID is required." }, { status: 400 });
-    }
-
-    const admin = createAdminClient();
-    const { data: registration, error } = await admin
-      .from("registrations")
-      .select(`
-        id,
-        user_id,
-        status,
-        competition_id,
-        competitions (id, name, registration_fee, capacity)
-      `)
-      .eq("id", registrationId)
-      .eq("user_id", user.id)
-      .single();
-
-    if (error || !registration) {
-      return NextResponse.json({ error: "Registration not found." }, { status: 404 });
-    }
-
-    if (registration.status === "CONFIRMED") {
-      return NextResponse.json({ alreadyConfirmed: true, registrationId });
-    }
-
-    const amount = Number(registration.competitions?.registration_fee || 0);
-    if (amount <= 0) {
-      return NextResponse.json({ alreadyConfirmed: true, registrationId });
-    }
-
-    const keyId = process.env.RAZORPAY_KEY_ID;
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
-
-    if (!keyId || !keySecret) {
       return NextResponse.json(
-        { error: "Online payment is not configured yet. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in the environment." },
+        { error: "Authentication required." },
+        { status: 401 }
+      );
+    }
+
+    // --------------------------------------------------
+    // 2. Read registration ID
+    // --------------------------------------------------
+    const body = await request.json();
+    const { registrationId } = body;
+
+    if (!registrationId) {
+      return NextResponse.json(
+        { error: "Registration ID is required." },
+        { status: 400 }
+      );
+    }
+
+    // --------------------------------------------------
+    // 3. Admin client for secure database operations
+    // --------------------------------------------------
+    const admin = createAdminClient();
+
+    // --------------------------------------------------
+    // 4. Load registration + competition
+    // --------------------------------------------------
+    const { data: registration, error: registrationError } =
+      await admin
+        .from("registrations")
+        .select(`
+          id,
+          user_id,
+          status,
+          participation_mode,
+          competition_id
+        `)
+        .eq("id", registrationId)
+        .single();
+
+    if (registrationError || !registration) {
+      return NextResponse.json(
+        { error: "Registration not found." },
+        { status: 404 }
+      );
+    }
+
+    // --------------------------------------------------
+    // 5. Make sure this registration belongs to user
+    // --------------------------------------------------
+    if (registration.user_id !== user.id) {
+      return NextResponse.json(
+        { error: "You are not allowed to pay for this registration." },
+        { status: 403 }
+      );
+    }
+
+    // --------------------------------------------------
+    // 6. Registration status
+    // ONLINE payment does NOT require approval.
+    // PENDING is allowed.
+    // APPROVED is also allowed for compatibility.
+    // --------------------------------------------------
+    if (
+      registration.status !== "PENDING" &&
+      registration.status !== "APPROVED"
+    ) {
+      if (registration.status === "CONFIRMED") {
+        return NextResponse.json({
+          success: true,
+          alreadyConfirmed: true,
+          registrationId: registration.id,
+        });
+      }
+
+      return NextResponse.json(
+        {
+          error: `Online payment is not available for registration status: ${registration.status}.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // --------------------------------------------------
+    // 7. Online participation required
+    // --------------------------------------------------
+    if (
+      String(registration.participation_mode || "").toUpperCase() !==
+      "ONLINE"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "This registration is not configured for online payment.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // --------------------------------------------------
+    // 8. Get competition fee
+    // --------------------------------------------------
+    const { data: competition, error: competitionError } =
+      await admin
+        .from("competitions")
+        .select(`
+          id,
+          name,
+          registration_fee
+        `)
+        .eq("id", registration.competition_id)
+        .single();
+
+    if (competitionError || !competition) {
+      return NextResponse.json(
+        { error: "Competition not found." },
+        { status: 404 }
+      );
+    }
+
+    const amountRupees = Number(competition.registration_fee || 0);
+
+    if (!Number.isFinite(amountRupees) || amountRupees <= 0) {
+      return NextResponse.json(
+        {
+          error:
+            "This competition does not have a valid online payment amount.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const amountPaise = Math.round(amountRupees * 100);
+
+    // --------------------------------------------------
+    // 9. Check if payment already exists
+    // --------------------------------------------------
+    const { data: existingPayment, error: paymentLookupError } =
+      await admin
+        .from("payments")
+        .select(`
+          id,
+          amount,
+          payment_method,
+          payment_status,
+          gateway_payment_id
+        `)
+        .eq("registration_id", registrationId)
+        .eq("payment_method", "ONLINE")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (paymentLookupError) {
+      console.error(
+        "Payment lookup error:",
+        paymentLookupError
+      );
+
+      return NextResponse.json(
+        { error: "Unable to load payment information." },
+        { status: 500 }
+      );
+    }
+
+    // --------------------------------------------------
+    // 10. Already paid
+    // --------------------------------------------------
+    if (existingPayment?.payment_status === "PAID") {
+      return NextResponse.json({
+        success: true,
+        alreadyConfirmed: true,
+        alreadyPaid: true,
+        registrationId,
+      });
+    }
+
+    // --------------------------------------------------
+    // 11. Razorpay credentials
+    // --------------------------------------------------
+    const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
+    const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
+
+    if (!razorpayKeyId || !razorpayKeySecret) {
+      console.error("Razorpay environment variables are missing.");
+
+      return NextResponse.json(
+        {
+          error:
+            "Payment gateway is not configured. Please add Razorpay test keys.",
+        },
         { status: 503 }
       );
     }
 
-    const existingPayment = await admin
-      .from("payments")
-      .select("provider_order_id, status")
-      .eq("registration_id", registrationId)
-      .maybeSingle();
-
-    if (existingPayment.data?.provider_order_id && existingPayment.data.status === "PENDING") {
+    // --------------------------------------------------
+    // 12. Reuse existing pending Razorpay order
+    // gateway_payment_id temporarily stores order ID
+    // --------------------------------------------------
+    if (
+      existingPayment?.payment_status === "PENDING" &&
+      existingPayment.gateway_payment_id
+    ) {
       return NextResponse.json({
-        orderId: existingPayment.data.provider_order_id,
-        amount: amount * 100,
+        success: true,
+        orderId: existingPayment.gateway_payment_id,
+        amount: amountPaise,
         currency: "INR",
-        keyId,
+        keyId: razorpayKeyId,
         registrationId,
-        competitionName: registration.competitions?.name,
+        competitionName: competition.name,
       });
     }
 
-    const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
-    const response = await fetch("https://api.razorpay.com/v1/orders", {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        amount: Math.round(amount * 100),
-        currency: "INR",
-        receipt: registrationId.slice(0, 40),
-        notes: { registration_id: registrationId },
-      }),
-    });
+    // --------------------------------------------------
+    // 13. Create Razorpay order
+    // --------------------------------------------------
+    const razorpayAuth = Buffer.from(
+      `${razorpayKeyId}:${razorpayKeySecret}`
+    ).toString("base64");
 
-    const order = await response.json();
-    if (!response.ok) {
-      console.error("Razorpay order error:", order);
-      return NextResponse.json({ error: "Payment order could not be created." }, { status: 502 });
+    const razorpayResponse = await fetch(
+      "https://api.razorpay.com/v1/orders",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${razorpayAuth}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          amount: amountPaise,
+          currency: "INR",
+          receipt: `EVN-${registrationId.slice(0, 8)}`,
+          notes: {
+            registration_id: registrationId,
+            competition_id: registration.competition_id,
+          },
+        }),
+      }
+    );
+
+    const razorpayData = await razorpayResponse.json();
+
+    if (!razorpayResponse.ok) {
+      console.error(
+        "Razorpay order creation failed:",
+        razorpayData
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            razorpayData?.error?.description ||
+            "Unable to create Razorpay order.",
+        },
+        { status: 502 }
+      );
     }
 
-    await admin.from("payments").upsert({
-      registration_id: registrationId,
-      amount,
-      currency: "INR",
-      provider: "RAZORPAY",
-      provider_order_id: order.id,
-      status: "PENDING",
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "registration_id" });
+    const razorpayOrderId = razorpayData.id;
 
+    // --------------------------------------------------
+    // 14. Save payment record
+    // --------------------------------------------------
+    let savedPayment;
+
+    if (existingPayment) {
+      const { data, error } = await admin
+        .from("payments")
+        .update({
+          amount: amountRupees,
+          payment_method: "ONLINE",
+          payment_status: "PENDING",
+          gateway_payment_id: razorpayOrderId,
+        })
+        .eq("id", existingPayment.id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error(
+          "Payment update error:",
+          error
+        );
+
+        return NextResponse.json(
+          {
+            error:
+              "Razorpay order was created but payment record could not be saved.",
+          },
+          { status: 500 }
+        );
+      }
+
+      savedPayment = data;
+    } else {
+      const { data, error } = await admin
+        .from("payments")
+        .insert({
+          registration_id: registrationId,
+          amount: amountRupees,
+          payment_method: "ONLINE",
+          payment_status: "PENDING",
+          gateway_payment_id: razorpayOrderId,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error(
+          "Payment insert error:",
+          error
+        );
+
+        return NextResponse.json(
+          {
+            error:
+              "Razorpay order was created but payment record could not be saved.",
+          },
+          { status: 500 }
+        );
+      }
+
+      savedPayment = data;
+    }
+
+    // --------------------------------------------------
+    // 15. Return checkout information
+    // --------------------------------------------------
     return NextResponse.json({
-      orderId: order.id,
-      amount: order.amount,
-      currency: order.currency,
-      keyId,
+      success: true,
+      orderId: razorpayOrderId,
+      amount: amountPaise,
+      currency: "INR",
+      keyId: razorpayKeyId,
       registrationId,
-      competitionName: registration.competitions?.name,
+      competitionName: competition.name,
+      paymentId: savedPayment.id,
     });
   } catch (error) {
-    console.error("Create payment order error:", error);
-    return NextResponse.json({ error: "Unable to start payment." }, { status: 500 });
+    console.error(
+      "Create Razorpay order error:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          error?.message ||
+          "Unable to prepare online payment.",
+      },
+      { status: 500 }
+    );
   }
 }

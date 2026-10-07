@@ -5,14 +5,23 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+/*
+ * ============================================================
+ * HELPERS
+ * ============================================================
+ */
+
 function formatDate(date) {
   if (!date) return "Date not available";
 
-  return new Date(`${date}T00:00:00`).toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  return new Date(`${date}T00:00:00`).toLocaleDateString(
+    "en-IN",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }
+  );
 }
 
 function formatTime(time) {
@@ -21,6 +30,7 @@ function formatTime(time) {
   const [hours, minutes] = time.split(":");
 
   const date = new Date();
+
   date.setHours(Number(hours), Number(minutes), 0, 0);
 
   return date.toLocaleTimeString("en-IN", {
@@ -40,6 +50,12 @@ function formatFee(fee) {
   return `₹${amount.toLocaleString("en-IN")}`;
 }
 
+/*
+ * ============================================================
+ * PAGE
+ * ============================================================
+ */
+
 export default function ParticipantCompetitionDetailsPage() {
   const params = useParams();
   const router = useRouter();
@@ -48,10 +64,34 @@ export default function ParticipantCompetitionDetailsPage() {
 
   const [competition, setCompetition] = useState(null);
   const [sessions, setSessions] = useState([]);
-  const [existingRegistration, setExistingRegistration] = useState(null);
+  const [existingRegistration, setExistingRegistration] =
+    useState(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  /*
+   * ----------------------------------------------------------
+   * LOAD COMPETITION
+   * ----------------------------------------------------------
+   *
+   * IMPORTANT:
+   *
+   * This page is PUBLIC.
+   *
+   * A user does NOT need to be logged in to see:
+   * - Competition
+   * - Description
+   * - Rules
+   * - Fee
+   * - Sessions
+   * - Venue
+   * - Availability
+   *
+   * Login is checked ONLY when Register Now is clicked.
+   *
+   * ----------------------------------------------------------
+   */
 
   useEffect(() => {
     if (competitionId) {
@@ -67,29 +107,9 @@ export default function ParticipantCompetitionDetailsPage() {
 
     try {
       /*
-       * ---------------------------------------------------------
-       * 1. Check logged-in user
-       * ---------------------------------------------------------
-       */
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) {
-        throw userError;
-      }
-
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-
-      /*
-       * ---------------------------------------------------------
-       * 2. Load published competition
-       * ---------------------------------------------------------
+       * ======================================================
+       * 1. LOAD PUBLISHED COMPETITION
+       * ======================================================
        */
 
       const {
@@ -126,19 +146,18 @@ export default function ParticipantCompetitionDetailsPage() {
       }
 
       if (!competitionData) {
-        setError("Competition not found or is not published.");
+        setError(
+          "Competition not found or is not published."
+        );
         return;
       }
 
       setCompetition(competitionData);
 
       /*
-       * ---------------------------------------------------------
-       * 3. Load sessions + availability
-       * ---------------------------------------------------------
-       *
-       * This uses the availability function already created
-       * in your Supabase database.
+       * ======================================================
+       * 2. LOAD SESSIONS + AVAILABILITY
+       * ======================================================
        */
 
       const {
@@ -152,12 +171,15 @@ export default function ParticipantCompetitionDetailsPage() {
       );
 
       if (sessionError) {
-        console.error("Session availability error:", sessionError);
+        console.error(
+          "Session availability error:",
+          sessionError
+        );
 
         /*
-         * Fallback:
-         * If the RPC is unavailable, load the sessions directly.
+         * Fallback to direct session query.
          */
+
         const {
           data: fallbackSessions,
           error: fallbackError,
@@ -184,54 +206,78 @@ export default function ParticipantCompetitionDetailsPage() {
           });
 
         if (fallbackError) {
-          throw fallbackError;
-        }
+          console.error(
+            "Fallback session error:",
+            fallbackError
+          );
 
-        setSessions(
-          (fallbackSessions || []).map((session) => ({
-            ...session,
-            registered_count: null,
-            available_seats: session.capacity,
-          }))
-        );
+          setSessions([]);
+        } else {
+          setSessions(
+            (fallbackSessions || []).map((session) => ({
+              ...session,
+              registered_count: null,
+              available_seats: session.capacity,
+            }))
+          );
+        }
       } else {
         setSessions(sessionData || []);
       }
 
       /*
-       * ---------------------------------------------------------
-       * 4. Check whether participant already registered
-       * ---------------------------------------------------------
+       * ======================================================
+       * 3. OPTIONAL LOGIN CHECK
+       * ======================================================
+       *
+       * We do NOT require login.
+       *
+       * We only check whether a user happens to already
+       * be logged in so we can show "Already Registered".
+       *
+       * If no user exists, the page continues normally.
+       * ======================================================
        */
 
       const {
-        data: registrationData,
-        error: registrationError,
-      } = await supabase
-        .from("registrations")
-        .select(`
-          id,
-          registration_number,
-          status,
-          registered_at,
-          session_id
-        `)
-        .eq("user_id", user.id)
-        .eq("competition_id", competitionId)
-        .in("status", ["PENDING", "CONFIRMED"])
-        .maybeSingle();
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      if (registrationError) {
-        /*
-         * Do not block the competition page if the registration
-         * lookup is restricted by RLS.
-         */
-        console.warn(
-          "Could not check existing registration:",
-          registrationError
-        );
+      if (user) {
+        const {
+          data: registrationData,
+          error: registrationError,
+        } = await supabase
+          .from("registrations")
+          .select(`
+            id,
+            registration_number,
+            status,
+            registered_at,
+            session_id
+          `)
+          .eq("user_id", user.id)
+          .eq("competition_id", competitionId)
+          .in("status", ["PENDING", "APPROVED", "CONFIRMED"])
+          .maybeSingle();
+
+        if (registrationError) {
+          console.warn(
+            "Could not check existing registration:",
+            registrationError
+          );
+
+          setExistingRegistration(null);
+        } else {
+          setExistingRegistration(
+            registrationData || null
+          );
+        }
       } else {
-        setExistingRegistration(registrationData || null);
+        /*
+         * Not logged in is completely allowed here.
+         */
+        setExistingRegistration(null);
       }
     } catch (err) {
       console.error(
@@ -248,48 +294,123 @@ export default function ParticipantCompetitionDetailsPage() {
     }
   }
 
-  function handleRegister() {
+  /*
+   * ==========================================================
+   * REGISTER BUTTON
+   * ==========================================================
+   *
+   * THIS is where login is required.
+   *
+   * Not logged in:
+   *      → /login
+   *
+   * Logged in:
+   *      → registration form
+   *
+   * The return URL is passed so the user can continue to
+   * the same competition after signing in.
+   * ==========================================================
+   */
+
+  async function handleRegister() {
     if (!competition) {
       return;
     }
 
-    router.push(
-      `/participant/events/details/competition/${competition.id}/register`
-    );
+    const supabase = createClient();
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        console.error(
+          "Authentication check error:",
+          userError
+        );
+      }
+
+      /*
+       * ------------------------------------------------------
+       * NOT LOGGED IN
+       * ------------------------------------------------------
+       */
+
+      if (!user) {
+        const registrationUrl =
+          `/participant/events/details/competition/${competition.id}/register`;
+
+        const loginUrl =
+          `/login?redirectTo=${encodeURIComponent(
+            registrationUrl
+          )}`;
+
+        router.push(loginUrl);
+
+        return;
+      }
+
+      /*
+       * ------------------------------------------------------
+       * LOGGED IN
+       * ------------------------------------------------------
+       */
+
+      router.push(
+        `/participant/events/details/competition/${competition.id}/register`
+      );
+    } catch (err) {
+      console.error(
+        "Register button error:",
+        err
+      );
+
+      router.push("/login");
+    }
   }
 
   /*
-   * ---------------------------------------------------------
-   * Loading
-   * ---------------------------------------------------------
+   * ==========================================================
+   * LOADING
+   * ==========================================================
    */
 
   if (loading) {
     return (
       <main className="min-h-screen bg-[#020617] px-4 py-8 text-white sm:px-6 lg:px-8">
+
         <div className="mx-auto max-w-5xl">
+
           <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-10 text-center">
+
             <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-blue-500" />
 
             <p className="mt-4 text-sm text-slate-400">
               Loading competition...
             </p>
+
           </div>
+
         </div>
+
       </main>
     );
   }
 
   /*
-   * ---------------------------------------------------------
-   * Error
-   * ---------------------------------------------------------
+   * ==========================================================
+   * ERROR
+   * ==========================================================
    */
 
   if (error || !competition) {
     return (
       <main className="min-h-screen bg-[#020617] px-4 py-8 text-white sm:px-6 lg:px-8">
+
         <div className="mx-auto max-w-5xl">
+
           <Link
             href="/participant/events"
             className="text-sm text-slate-400 transition hover:text-white"
@@ -298,6 +419,7 @@ export default function ParticipantCompetitionDetailsPage() {
           </Link>
 
           <div className="mt-6 rounded-3xl border border-red-500/20 bg-red-500/10 p-6 sm:p-8">
+
             <h1 className="text-xl font-semibold text-red-300">
               {error || "Competition not found."}
             </h1>
@@ -308,11 +430,20 @@ export default function ParticipantCompetitionDetailsPage() {
             >
               ← Back to Events
             </Link>
+
           </div>
+
         </div>
+
       </main>
     );
   }
+
+  /*
+   * ==========================================================
+   * CHECK FULL
+   * ==========================================================
+   */
 
   const competitionFull =
     sessions.length > 0 &&
@@ -323,13 +454,20 @@ export default function ParticipantCompetitionDetailsPage() {
         Number(session.available_seats) <= 0
     );
 
+  /*
+   * ==========================================================
+   * MAIN PAGE
+   * ==========================================================
+   */
+
   return (
     <main className="min-h-screen bg-[#020617] text-white">
+
       <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
 
-        {/* --------------------------------------------------
-            Back
-        -------------------------------------------------- */}
+        {/* ==================================================
+            BACK
+        =================================================== */}
 
         <Link
           href={`/participant/events/details?eventId=${competition.event_id}`}
@@ -338,23 +476,27 @@ export default function ParticipantCompetitionDetailsPage() {
           ← Back to Event
         </Link>
 
-        {/* --------------------------------------------------
-            Hero
-        -------------------------------------------------- */}
+        {/* ==================================================
+            HERO
+        =================================================== */}
 
         <section className="mt-6 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04]">
 
           {competition.poster_url ? (
             <div className="border-b border-white/10 bg-slate-950">
+
               <img
                 src={competition.poster_url}
                 alt={`${competition.name} poster`}
                 className="max-h-[420px] w-full object-contain"
               />
+
             </div>
           ) : (
             <div className="flex min-h-[220px] items-center justify-center border-b border-white/10 bg-gradient-to-br from-blue-500/10 via-slate-950 to-purple-500/10 px-6 text-center">
+
               <div>
+
                 <p className="text-sm font-semibold uppercase tracking-[0.25em] text-blue-400">
                   Competition
                 </p>
@@ -362,7 +504,9 @@ export default function ParticipantCompetitionDetailsPage() {
                 <h1 className="mt-3 text-3xl font-bold text-white sm:text-5xl">
                   {competition.name}
                 </h1>
+
               </div>
+
             </div>
           )}
 
@@ -371,6 +515,7 @@ export default function ParticipantCompetitionDetailsPage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 
               <div>
+
                 <p className="text-sm font-semibold uppercase tracking-widest text-blue-400">
                   Competition
                 </p>
@@ -378,9 +523,10 @@ export default function ParticipantCompetitionDetailsPage() {
                 <h1 className="mt-2 text-3xl font-bold text-white sm:text-4xl">
                   {competition.name}
                 </h1>
+
               </div>
 
-              <div className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-300">
+              <div className="w-fit rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-300">
                 Published
               </div>
 
@@ -392,7 +538,7 @@ export default function ParticipantCompetitionDetailsPage() {
               </p>
             )}
 
-            {/* Quick information */}
+            {/* QUICK INFORMATION */}
 
             <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
@@ -432,12 +578,14 @@ export default function ParticipantCompetitionDetailsPage() {
               />
 
             </div>
+
           </div>
+
         </section>
 
-        {/* --------------------------------------------------
-            Rules
-        -------------------------------------------------- */}
+        {/* ==================================================
+            RULES
+        =================================================== */}
 
         {competition.rules && (
           <section className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-6 sm:p-8">
@@ -453,13 +601,14 @@ export default function ParticipantCompetitionDetailsPage() {
           </section>
         )}
 
-        {/* --------------------------------------------------
-            Sessions
-        -------------------------------------------------- */}
+        {/* ==================================================
+            SESSIONS
+        =================================================== */}
 
         <section className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-6 sm:p-8">
 
           <div>
+
             <p className="text-sm font-semibold uppercase tracking-widest text-blue-400">
               Schedule
             </p>
@@ -471,14 +620,17 @@ export default function ParticipantCompetitionDetailsPage() {
             <p className="mt-2 text-sm text-slate-500">
               Select a session during registration.
             </p>
+
           </div>
 
           {sessions.length === 0 ? (
             <div className="mt-6 rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-5">
+
               <p className="text-sm text-yellow-300">
                 No sessions are currently available for
                 this competition.
               </p>
+
             </div>
           ) : (
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -503,6 +655,7 @@ export default function ParticipantCompetitionDetailsPage() {
                     <div className="flex items-start justify-between gap-4">
 
                       <div>
+
                         <p className="text-sm font-semibold uppercase tracking-wider text-blue-400">
                           Session {index + 1}
                         </p>
@@ -511,6 +664,7 @@ export default function ParticipantCompetitionDetailsPage() {
                           {session.session_name ||
                             `Session ${index + 1}`}
                         </h3>
+
                       </div>
 
                       {isFull ? (
@@ -574,10 +728,12 @@ export default function ParticipantCompetitionDetailsPage() {
                       session.available_seats !==
                         undefined ? (
                         <p className="text-sm text-slate-400">
+
                           <span className="font-semibold text-white">
                             {session.available_seats}
                           </span>{" "}
                           seats available
+
                         </p>
                       ) : (
                         <p className="text-sm text-slate-500">
@@ -596,9 +752,9 @@ export default function ParticipantCompetitionDetailsPage() {
 
         </section>
 
-        {/* --------------------------------------------------
-            Registration
-        -------------------------------------------------- */}
+        {/* ==================================================
+            REGISTRATION
+        =================================================== */}
 
         <section className="mt-6 rounded-3xl border border-white/10 bg-gradient-to-br from-blue-500/10 via-white/[0.04] to-purple-500/10 p-6 sm:p-8">
 
@@ -615,6 +771,7 @@ export default function ParticipantCompetitionDetailsPage() {
 
               <p className="mt-3 text-sm leading-6 text-slate-400">
                 Registration Number:{" "}
+
                 <span className="font-semibold text-white">
                   {existingRegistration.registration_number ||
                     "Processing"}
@@ -623,6 +780,7 @@ export default function ParticipantCompetitionDetailsPage() {
 
               <p className="mt-1 text-sm text-slate-500">
                 Status:{" "}
+
                 <span className="font-semibold text-slate-300">
                   {existingRegistration.status}
                 </span>
@@ -640,6 +798,7 @@ export default function ParticipantCompetitionDetailsPage() {
             <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
 
               <div>
+
                 <p className="text-sm font-semibold uppercase tracking-widest text-blue-400">
                   Ready to participate?
                 </p>
@@ -652,6 +811,7 @@ export default function ParticipantCompetitionDetailsPage() {
                   Choose your preferred session and
                   complete the registration process.
                 </p>
+
               </div>
 
               <button
@@ -673,9 +833,9 @@ export default function ParticipantCompetitionDetailsPage() {
 
         </section>
 
-        {/* --------------------------------------------------
-            Bottom navigation
-        -------------------------------------------------- */}
+        {/* ==================================================
+            BOTTOM NAVIGATION
+        =================================================== */}
 
         <div className="flex flex-col gap-3 py-8 sm:flex-row sm:items-center sm:justify-between">
 
@@ -696,14 +856,15 @@ export default function ParticipantCompetitionDetailsPage() {
         </div>
 
       </div>
+
     </main>
   );
 }
 
 /*
- * ---------------------------------------------------------
- * Info Card
- * ---------------------------------------------------------
+ * ============================================================
+ * INFO CARD
+ * ============================================================
  */
 
 function InfoCard({ label, value }) {
@@ -723,9 +884,9 @@ function InfoCard({ label, value }) {
 }
 
 /*
- * ---------------------------------------------------------
- * Detail Row
- * ---------------------------------------------------------
+ * ============================================================
+ * DETAIL ROW
+ * ============================================================
  */
 
 function DetailRow({ label, value }) {

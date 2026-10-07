@@ -34,6 +34,35 @@ export default function DashboardLayout({ children }) {
 
   /*
    * ---------------------------------------------------------
+   * PUBLIC PARTICIPANT PAGES
+   *
+   * These pages must NOT use DashboardSidebar.
+   * Therefore they must NOT trigger the login redirect.
+   *
+   * PUBLIC:
+   * /participant/events
+   * /participant/events/details
+   * /participant/events/details/competition/[id]
+   *
+   * Registration pages are NOT included here.
+   * ---------------------------------------------------------
+   */
+
+  const isPublicParticipantPage =
+    pathname === "/participant/events" ||
+    pathname === "/participant/events/" ||
+    pathname === "/participant/events/details" ||
+    pathname === "/participant/events/details/" ||
+    pathname.startsWith(
+      "/participant/events/details/competition/"
+    );
+
+  if (isPublicParticipantPage) {
+    return <>{children}</>;
+  }
+
+  /*
+   * ---------------------------------------------------------
    * PREVENT DUPLICATE DASHBOARD SHELL
    * ---------------------------------------------------------
    */

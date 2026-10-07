@@ -61,8 +61,6 @@ export default function Home() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       const currentUser = session?.user || null;
 
-      // IMPORTANT:
-      // Do not await another Supabase request inside this callback.
       setUser(currentUser);
 
       if (!currentUser) {
@@ -71,7 +69,6 @@ export default function Home() {
 
       setAuthLoading(false);
 
-      // Load role separately after auth event.
       if (currentUser) {
         setTimeout(async () => {
           try {
@@ -234,7 +231,7 @@ export default function Home() {
           <nav className="hidden items-center gap-7 md:flex">
 
             <Link
-              href="/events"
+              href="/participant/events"
               className="text-sm font-medium text-slate-300 transition hover:text-white"
             >
               Events
@@ -308,7 +305,7 @@ export default function Home() {
             <nav className="flex flex-col gap-1">
 
               <Link
-                href="/events"
+                href="/participant/events"
                 onClick={() => setMobileMenuOpen(false)}
                 className="rounded-xl px-4 py-3 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
               >
@@ -413,10 +410,11 @@ export default function Home() {
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
 
             <Link
-              href="/events"
+              href="/participant/events"
               className="group inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-7 py-3.5 text-sm font-bold text-white shadow-xl shadow-blue-600/20 transition hover:-translate-y-0.5 hover:bg-blue-500 sm:w-auto"
             >
               Explore Events
+
               <span className="transition-transform group-hover:translate-x-1">
                 →
               </span>
@@ -452,7 +450,7 @@ export default function Home() {
             ].map((category) => (
               <Link
                 key={category}
-                href="/events"
+                href="/participant/events"
                 className="rounded-full border border-white/10 bg-white/[0.035] px-4 py-2 text-xs font-medium text-slate-400 transition hover:border-blue-500/30 hover:bg-blue-500/10 hover:text-blue-300"
               >
                 {category}
@@ -469,6 +467,7 @@ export default function Home() {
               <p className="text-lg font-bold sm:text-xl">
                 Events
               </p>
+
               <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-600 sm:text-xs">
                 Discover
               </p>
@@ -478,6 +477,7 @@ export default function Home() {
               <p className="text-lg font-bold sm:text-xl">
                 Competitions
               </p>
+
               <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-600 sm:text-xs">
                 Participate
               </p>
@@ -487,6 +487,7 @@ export default function Home() {
               <p className="text-lg font-bold sm:text-xl">
                 Digital
               </p>
+
               <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-600 sm:text-xs">
                 Tickets
               </p>
@@ -524,7 +525,7 @@ export default function Home() {
             </div>
 
             <Link
-              href="/events"
+              href="/participant/events"
               className="group text-sm font-semibold text-blue-400 transition hover:text-blue-300"
             >
               View all events
@@ -549,7 +550,9 @@ export default function Home() {
 
                   <div className="space-y-3 p-5">
                     <div className="h-5 w-3/4 animate-pulse rounded bg-white/5" />
+
                     <div className="h-4 w-full animate-pulse rounded bg-white/5" />
+
                     <div className="h-4 w-2/3 animate-pulse rounded bg-white/5" />
                   </div>
                 </div>
@@ -564,9 +567,10 @@ export default function Home() {
             <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
 
               {events.map((event) => (
+
                 <Link
                   key={event.id}
-                  href={`/events/${event.id}`}
+                  href={`/participant/events/details?eventId=${event.id}`}
                   className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025] transition duration-300 hover:-translate-y-1 hover:border-blue-500/30 hover:bg-white/[0.045]"
                 >
 
@@ -644,6 +648,7 @@ export default function Home() {
                   </div>
 
                 </Link>
+
               ))}
 
             </div>
@@ -668,7 +673,7 @@ export default function Home() {
               </p>
 
               <Link
-                href="/events"
+                href="/participant/events"
                 className="mt-6 inline-flex rounded-xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white"
               >
                 Browse Events
@@ -859,7 +864,7 @@ export default function Home() {
             </Link>
 
             <Link
-              href="/events"
+              href="/participant/events"
               className="transition hover:text-white"
             >
               Events
