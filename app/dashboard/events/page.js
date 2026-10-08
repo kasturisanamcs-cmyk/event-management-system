@@ -71,9 +71,6 @@ export default function MyEventsPage() {
        *
        * ORGANIZER:
        * See only events created by the logged-in organizer.
-       *
-       * This keeps the page compatible with the existing
-       * /dashboard/events route while still respecting roles.
        */
       if (profile?.role !== "ADMIN") {
         query = query.eq("created_by", user.id);
@@ -180,6 +177,7 @@ export default function MyEventsPage() {
               <EventCard
                 key={event.id}
                 event={event}
+                onPublished={loadEvents}
               />
             ))}
           </div>
@@ -193,12 +191,55 @@ export default function MyEventsPage() {
    EVENT CARD
 ========================= */
 
-function EventCard({ event }) {
+function EventCard({ event, onPublished }) {
+  const supabase = createClient();
+
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState("");
+
   const status = event.status || "DRAFT";
 
   const competitionCount = Array.isArray(event.competitions)
     ? event.competitions.length
     : 0;
+
+  async function handlePublish() {
+    if (publishing) return;
+
+    const confirmed = window.confirm(
+      `Publish "${event.name}"?\n\nOnce published, participants will be able to see this event.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setPublishing(true);
+    setPublishError("");
+
+    try {
+      const { error } = await supabase
+        .from("events")
+        .update({
+          status: "PUBLISHED",
+        })
+        .eq("id", event.id);
+
+      if (error) {
+        throw error;
+      }
+
+      await onPublished();
+    } catch (err) {
+      console.error("Publish event error:", err);
+
+      setPublishError(
+        err?.message || "Unable to publish this event."
+      );
+    } finally {
+      setPublishing(false);
+    }
+  }
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition hover:border-blue-500/20 hover:bg-white/[0.06]">
@@ -253,10 +294,37 @@ function EventCard({ event }) {
                 </span>
               </p>
             )}
+
+            {publishError && (
+              <p className="mt-3 text-xs text-red-400">
+                {publishError}
+              </p>
+            )}
           </div>
 
-          {/* ACTION */}
-          <div className="flex shrink-0">
+          {/* ACTIONS */}
+          <div className="flex shrink-0 flex-wrap gap-2">
+            {/* EDIT */}
+            <Link
+              href={`/dashboard/events/${event.id}/edit`}
+              className="inline-flex w-full items-center justify-center rounded-xl border border-white/10 bg-[#08152b] px-5 py-3 text-sm font-medium text-slate-200 transition hover:border-blue-500/30 hover:bg-blue-500/10 hover:text-white sm:w-auto"
+            >
+              Edit
+            </Link>
+
+            {/* PUBLISH */}
+            {status === "DRAFT" && (
+              <button
+                type="button"
+                onClick={handlePublish}
+                disabled={publishing}
+                className="inline-flex w-full items-center justify-center rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+              >
+                {publishing ? "Publishing..." : "Publish Event"}
+              </button>
+            )}
+
+            {/* MANAGE EVENT */}
             <Link
               href={`/dashboard/events/${event.id}`}
               className="inline-flex w-full items-center justify-center rounded-xl border border-white/10 bg-[#08152b] px-5 py-3 text-sm font-medium text-slate-200 transition hover:border-blue-500/30 hover:bg-blue-500/10 hover:text-white sm:w-auto"
