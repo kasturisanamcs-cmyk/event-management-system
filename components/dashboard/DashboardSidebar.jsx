@@ -58,13 +58,11 @@ const menus = {
           href: "/dashboard/payments",
           icon: "₹",
         },
-        
         {
           name: "Announcements",
           href: "/dashboard/announcements",
           icon: "◇",
         },
-        
         {
           name: "Schedule",
           href: "/dashboard/schedule",
@@ -256,6 +254,9 @@ export default function DashboardSidebar({
   /*
    * ---------------------------------------------------------
    * LOAD USER ROLE
+   *
+   * Supabase authenticated user + profiles.role
+   * is the ONLY source of truth.
    * ---------------------------------------------------------
    */
 
@@ -336,7 +337,8 @@ export default function DashboardSidebar({
   async function handleLogout() {
     const supabase = createClient();
 
-    const { error } = await supabase.auth.signOut();
+    const { error } =
+      await supabase.auth.signOut();
 
     if (error) {
       console.error(
@@ -356,47 +358,36 @@ export default function DashboardSidebar({
   /*
    * ---------------------------------------------------------
    * ROLE SELECTION
+   *
+   * IMPORTANT:
+   *
+   * DO NOT use pathname to determine role.
+   *
+   * Example:
+   *
+   * ADMIN visiting:
+   * /participant/events
+   *
+   * MUST remain ADMIN.
+   *
+   * ADMIN visiting:
+   * /competition-member/attendance
+   *
+   * MUST remain ADMIN.
+   *
+   * The URL only determines the page.
+   * It NEVER changes the authenticated user's role.
    * ---------------------------------------------------------
    */
 
-  let currentRole = role;
+  const currentRole = role
+    ? role.trim().toUpperCase()
+    : null;
 
-  if (pathname.startsWith("/participant")) {
-    currentRole = "PARTICIPANT";
-  } else if (pathname.startsWith("/organizer")) {
-    currentRole = "ORGANIZER";
-  } else if (
-    pathname.startsWith("/competition-member")
-  ) {
-    currentRole = "COMPETITION_MEMBER";
-  }
-
-  /*
-   * /dashboard is shared by ADMIN and ORGANIZER.
-   */
-
-  if (
-    role === "ORGANIZER" &&
-    pathname.startsWith("/dashboard")
-  ) {
-    currentRole = "ORGANIZER";
-  }
-
-  if (
-    role === "ADMIN" &&
-    pathname.startsWith("/dashboard")
-  ) {
-    currentRole = "ADMIN";
-  }
-
-  if (
-    role === "ADMIN" &&
-    pathname.startsWith("/admin")
-  ) {
-    currentRole = "ADMIN";
-  }
-
-  const currentMenu = menus[currentRole] || [];
+  const currentMenu =
+    currentRole && menus[currentRole]
+      ? menus[currentRole]
+      : [];
 
   const displayRole = loading
     ? "Loading..."
@@ -419,14 +410,34 @@ export default function DashboardSidebar({
       ? "/participant/dashboard"
       : "/login";
 
+  /*
+   * ---------------------------------------------------------
+   * PROFILE ROUTES
+   * ---------------------------------------------------------
+   */
+
   const profileHref =
     currentRole === "PARTICIPANT"
       ? "/participant/profile"
+      : currentRole === "ORGANIZER"
+      ? "/organizer/profile"
+      : currentRole === "COMPETITION_MEMBER"
+      ? "/competition-member/profile"
       : "/dashboard/profile";
+
+  /*
+   * ---------------------------------------------------------
+   * SETTINGS ROUTES
+   * ---------------------------------------------------------
+   */
 
   const settingsHref =
     currentRole === "PARTICIPANT"
       ? "/participant/settings"
+      : currentRole === "ORGANIZER"
+      ? "/organizer/settings"
+      : currentRole === "COMPETITION_MEMBER"
+      ? "/competition-member/settings"
       : "/dashboard/settings";
 
   /*
@@ -601,7 +612,6 @@ export default function DashboardSidebar({
         ================================================== */}
 
         <div className="shrink-0 border-t border-white/10 p-3 sm:p-4">
-
           {/* PROFILE */}
 
           <Link
