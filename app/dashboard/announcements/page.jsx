@@ -13,6 +13,7 @@ export default function AnnouncementsPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -35,12 +36,18 @@ export default function AnnouncementsPage() {
     setError("");
 
     try {
+      // =========================================================
+      // GET CURRENT USER
+      // =========================================================
+
       const {
         data: { user: currentUser },
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError) throw userError;
+      if (userError) {
+        throw userError;
+      }
 
       if (!currentUser) {
         window.location.href = "/login";
@@ -49,21 +56,38 @@ export default function AnnouncementsPage() {
 
       setUser(currentUser);
 
-      // Load organizer's events
+      // =========================================================
+      // LOAD ORGANIZER EVENTS
+      //
+      // Uses the existing EventNest RPC so the organizer can see:
+      // 1. Events created by the organizer
+      // 2. Events assigned to the organizer
+      //
+      // No database tables or other flows are changed.
+      // =========================================================
+
       const {
         data: eventData,
         error: eventError,
-      } = await supabase
-        .from("events")
-        .select("id, name")
-        .eq("created_by", currentUser.id)
-        .order("created_at", { ascending: false });
+      } = await supabase.rpc(
+        "get_eventnest_organizer_announcement_events"
+      );
 
-      if (eventError) throw eventError;
+      if (eventError) {
+        throw eventError;
+      }
 
-      setEvents(eventData || []);
+      const normalizedEvents = (eventData || []).map((event) => ({
+        id: event.event_id,
+        name: event.event_name,
+      }));
 
-      // Load organizer's announcements
+      setEvents(normalizedEvents);
+
+      // =========================================================
+      // LOAD ORGANIZER ANNOUNCEMENTS
+      // =========================================================
+
       const {
         data: announcementData,
         error: announcementError,
@@ -84,16 +108,25 @@ export default function AnnouncementsPage() {
         .eq("created_by", currentUser.id)
         .order("created_at", { ascending: false });
 
-      if (announcementError) throw announcementError;
+      if (announcementError) {
+        throw announcementError;
+      }
 
       setAnnouncements(announcementData || []);
     } catch (err) {
       console.error("Announcements load error:", err);
-      setError(err.message || "Failed to load announcements.");
+
+      setError(
+        err?.message || "Failed to load announcements."
+      );
     } finally {
       setLoading(false);
     }
   }
+
+  // =========================================================
+  // FORM CHANGE
+  // =========================================================
 
   function handleChange(event) {
     const { name, value } = event.target;
@@ -103,6 +136,10 @@ export default function AnnouncementsPage() {
       [name]: value,
     }));
   }
+
+  // =========================================================
+  // RESET FORM
+  // =========================================================
 
   function resetForm() {
     setEditingId(null);
@@ -118,6 +155,10 @@ export default function AnnouncementsPage() {
     setError("");
     setSuccess("");
   }
+
+  // =========================================================
+  // CREATE / UPDATE ANNOUNCEMENT
+  // =========================================================
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -148,6 +189,10 @@ export default function AnnouncementsPage() {
     setSaving(true);
 
     try {
+      // =======================================================
+      // UPDATE
+      // =======================================================
+
       if (editingId) {
         const {
           error: updateError,
@@ -158,16 +203,27 @@ export default function AnnouncementsPage() {
             title: form.title.trim(),
             message: form.message.trim(),
             audience: form.audience,
-            announcement_status: form.announcement_status,
+            announcement_status:
+              form.announcement_status,
             updated_at: new Date().toISOString(),
           })
           .eq("id", editingId)
           .eq("created_by", user.id);
 
-        if (updateError) throw updateError;
+        if (updateError) {
+          throw updateError;
+        }
 
-        setSuccess("Announcement updated successfully.");
-      } else {
+        setSuccess(
+          "Announcement updated successfully."
+        );
+      }
+
+      // =======================================================
+      // CREATE
+      // =======================================================
+
+      else {
         const {
           error: insertError,
         } = await supabase
@@ -178,25 +234,36 @@ export default function AnnouncementsPage() {
             title: form.title.trim(),
             message: form.message.trim(),
             audience: form.audience,
-            announcement_status: form.announcement_status,
+            announcement_status:
+              form.announcement_status,
           });
 
-        if (insertError) throw insertError;
+        if (insertError) {
+          throw insertError;
+        }
 
-        setSuccess("Announcement created successfully.");
+        setSuccess(
+          "Announcement created successfully."
+        );
       }
 
       resetForm();
+
       await loadData();
     } catch (err) {
       console.error("Announcement save error:", err);
+
       setError(
-        err.message || "Failed to save announcement."
+        err?.message || "Failed to save announcement."
       );
     } finally {
       setSaving(false);
     }
   }
+
+  // =========================================================
+  // EDIT
+  // =========================================================
 
   function handleEdit(announcement) {
     setEditingId(announcement.id);
@@ -219,12 +286,18 @@ export default function AnnouncementsPage() {
     });
   }
 
+  // =========================================================
+  // DELETE
+  // =========================================================
+
   async function handleDelete(id) {
     const confirmed = window.confirm(
       "Are you sure you want to delete this announcement?"
     );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     setError("");
     setSuccess("");
@@ -238,9 +311,13 @@ export default function AnnouncementsPage() {
         .eq("id", id)
         .eq("created_by", user.id);
 
-      if (deleteError) throw deleteError;
+      if (deleteError) {
+        throw deleteError;
+      }
 
-      setSuccess("Announcement deleted successfully.");
+      setSuccess(
+        "Announcement deleted successfully."
+      );
 
       if (editingId === id) {
         resetForm();
@@ -248,12 +325,21 @@ export default function AnnouncementsPage() {
 
       await loadData();
     } catch (err) {
-      console.error("Announcement delete error:", err);
+      console.error(
+        "Announcement delete error:",
+        err
+      );
+
       setError(
-        err.message || "Failed to delete announcement."
+        err?.message ||
+          "Failed to delete announcement."
       );
     }
   }
+
+  // =========================================================
+  // EVENT NAME
+  // =========================================================
 
   function getEventName(eventId) {
     const event = events.find(
@@ -262,6 +348,10 @@ export default function AnnouncementsPage() {
 
     return event?.name || "Unknown Event";
   }
+
+  // =========================================================
+  // AUDIENCE LABEL
+  // =========================================================
 
   function getAudienceLabel(audience) {
     if (audience === "PARTICIPANTS") {
@@ -275,6 +365,10 @@ export default function AnnouncementsPage() {
     return "Everyone";
   }
 
+  // =========================================================
+  // STATUS STYLE
+  // =========================================================
+
   function getStatusStyle(status) {
     if (status === "PUBLISHED") {
       return "border-emerald-500/20 bg-emerald-500/10 text-emerald-400";
@@ -283,11 +377,17 @@ export default function AnnouncementsPage() {
     return "border-amber-500/20 bg-amber-500/10 text-amber-400";
   }
 
+  // =========================================================
+  // UI
+  // =========================================================
+
   return (
     <DashboardLayout>
       <div className="mx-auto w-full max-w-7xl space-y-6">
 
-        {/* HEADER */}
+        {/* =====================================================
+            HEADER
+        ====================================================== */}
 
         <div>
           <p className="text-sm font-medium text-blue-400">
@@ -303,7 +403,9 @@ export default function AnnouncementsPage() {
           </p>
         </div>
 
-        {/* SUCCESS */}
+        {/* =====================================================
+            SUCCESS
+        ====================================================== */}
 
         {success && (
           <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
@@ -311,7 +413,9 @@ export default function AnnouncementsPage() {
           </div>
         )}
 
-        {/* ERROR */}
+        {/* =====================================================
+            ERROR
+        ====================================================== */}
 
         {error && (
           <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
@@ -319,11 +423,14 @@ export default function AnnouncementsPage() {
           </div>
         )}
 
-        {/* CREATE / EDIT FORM */}
+        {/* =====================================================
+            CREATE / EDIT FORM
+        ====================================================== */}
 
         <section className="rounded-2xl border border-white/10 bg-[#050b18] p-5 shadow-xl sm:p-6">
 
           <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
             <div>
               <h2 className="text-lg font-semibold text-white">
                 {editingId
@@ -345,6 +452,7 @@ export default function AnnouncementsPage() {
                 Cancel Edit
               </button>
             )}
+
           </div>
 
           {loading ? (
@@ -353,13 +461,15 @@ export default function AnnouncementsPage() {
             </div>
           ) : events.length === 0 ? (
             <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-center">
+
               <p className="font-medium text-white">
                 No events found
               </p>
 
               <p className="mt-2 text-sm text-slate-500">
-                Create an event first before creating an announcement.
+                You currently do not have any events assigned to you.
               </p>
+
             </div>
           ) : (
             <form
@@ -487,9 +597,10 @@ export default function AnnouncementsPage() {
 
               </div>
 
-              {/* BUTTON */}
+              {/* BUTTONS */}
 
               <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-end">
+
                 <button
                   type="button"
                   onClick={resetForm}
@@ -509,16 +620,22 @@ export default function AnnouncementsPage() {
                     ? "Update Announcement"
                     : "Publish Announcement"}
                 </button>
+
               </div>
+
             </form>
           )}
+
         </section>
 
-        {/* ANNOUNCEMENT LIST */}
+        {/* =====================================================
+            ANNOUNCEMENT LIST
+        ====================================================== */}
 
         <section className="rounded-2xl border border-white/10 bg-[#050b18] p-5 shadow-xl sm:p-6">
 
           <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
             <div>
               <h2 className="text-lg font-semibold text-white">
                 Your Announcements
@@ -537,6 +654,7 @@ export default function AnnouncementsPage() {
             >
               Refresh
             </button>
+
           </div>
 
           {loading ? (
@@ -545,6 +663,7 @@ export default function AnnouncementsPage() {
             </div>
           ) : announcements.length === 0 ? (
             <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] p-10 text-center">
+
               <p className="text-base font-semibold text-white">
                 No announcements yet
               </p>
@@ -552,19 +671,23 @@ export default function AnnouncementsPage() {
               <p className="mt-2 text-sm text-slate-500">
                 Create your first announcement using the form above.
               </p>
+
             </div>
           ) : (
             <div className="space-y-4">
+
               {announcements.map((announcement) => (
                 <article
                   key={announcement.id}
                   className="rounded-2xl border border-white/10 bg-[#020617] p-5 transition hover:border-white/20"
                 >
+
                   {/* TOP */}
 
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
 
                     <div className="min-w-0">
+
                       <div className="flex flex-wrap items-center gap-2">
 
                         <span
@@ -588,13 +711,17 @@ export default function AnnouncementsPage() {
                       </h3>
 
                       <p className="mt-2 text-xs font-medium text-slate-500">
-                        {getEventName(announcement.event_id)}
+                        {getEventName(
+                          announcement.event_id
+                        )}
                       </p>
+
                     </div>
 
                     {/* ACTIONS */}
 
                     <div className="flex shrink-0 gap-2">
+
                       <button
                         type="button"
                         onClick={() =>
@@ -614,20 +741,25 @@ export default function AnnouncementsPage() {
                       >
                         Delete
                       </button>
+
                     </div>
+
                   </div>
 
                   {/* MESSAGE */}
 
                   <div className="mt-5 rounded-xl border border-white/5 bg-white/[0.02] p-4">
+
                     <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-300">
                       {announcement.message}
                     </p>
+
                   </div>
 
                   {/* DATE */}
 
                   <div className="mt-4 flex flex-col gap-1 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+
                     <span>
                       Created{" "}
                       {new Date(
@@ -644,12 +776,17 @@ export default function AnnouncementsPage() {
                         ).toLocaleString()}
                       </span>
                     )}
+
                   </div>
+
                 </article>
               ))}
+
             </div>
           )}
+
         </section>
+
       </div>
     </DashboardLayout>
   );
